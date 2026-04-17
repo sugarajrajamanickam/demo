@@ -112,6 +112,23 @@ class UserUpdate(BaseModel):
             raise ValueError(FULL_NAME_MSG)
         return v
 
+    @field_validator("security_question", "security_answer")
+    @classmethod
+    def _strip_security_field(cls, v: Optional[str]) -> Optional[str]:
+        # Sentinel semantics on update: ``None`` means 'unchanged', ``""``
+        # means 'clear both' (only allowed for managers — see update_user).
+        # Whitespace-only input would otherwise sneak past these checks and
+        # hit ``hash_security_answer`` (which strips+casefolds), producing a
+        # hash of the empty string and a trivially-bypassable answer.
+        # Normalise whitespace-only -> "" so the clearing branch is taken
+        # (which admins are blocked from) instead of persisting a hash of "".
+        if v is None:
+            return None
+        stripped = v.strip()
+        if stripped == "":
+            return ""
+        return stripped
+
 
 def _get_user_or_404(session: Session, user_id: int) -> User:
     user = session.get(User, user_id)

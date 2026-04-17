@@ -174,7 +174,7 @@ export default function RatesTable({ editable, onUnauthorized }: Props) {
                   <th>Start (ft)</th>
                   <th>End (ft)</th>
                   <th>Mode</th>
-                  <th>Rate</th>
+                  <th>Rate <small className="muted">(fixed = per ft · step up = per 100 ft step)</small></th>
                   <th aria-label="Actions"></th>
                 </tr>
               </thead>
@@ -223,15 +223,22 @@ export default function RatesTable({ editable, onUnauthorized }: Props) {
                       </select>
                     </td>
                     <td>
-                      <input
-                        type="number"
-                        step="any"
-                        min="0"
-                        value={row.rate}
-                        onChange={(e) => updateRow(idx, { rate: e.target.value })}
-                        required
-                        aria-label={`Range ${idx + 1} rate`}
-                      />
+                      <div className="rate-input-cell">
+                        <input
+                          type="number"
+                          step="any"
+                          min="0"
+                          value={row.rate}
+                          onChange={(e) =>
+                            updateRow(idx, { rate: e.target.value })
+                          }
+                          required
+                          aria-label={`Range ${idx + 1} rate`}
+                        />
+                        <span className="muted rate-unit">
+                          {row.mode === "fixed" ? "/ ft" : "/ 100 ft step"}
+                        </span>
+                      </div>
                     </td>
                     <td>
                       <button
@@ -268,9 +275,10 @@ export default function RatesTable({ editable, onUnauthorized }: Props) {
             )}
           </div>
           <p className="muted rates-hint">
-            Ranges must be contiguous and start at 0 ft. For <em>step up</em>{" "}
-            rows, rate adds to the previous 100-ft slice (starting from 0 if
-            it's the first range).
+            Ranges must be contiguous and start at 0 ft. For <em>fixed</em>{" "}
+            rows the rate is charged <strong>per foot</strong>. For{" "}
+            <em>step up</em> rows the rate is added to the previous 100-ft
+            slice's per-100-ft cost (starting from 0 if it's the first range).
           </p>
         </form>
       ) : null}

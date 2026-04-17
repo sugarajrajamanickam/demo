@@ -162,8 +162,15 @@ def derive_slices(ranges: List[RateRange] | List[RateRangeIn]) -> List[DerivedSl
     """Expand admin-defined ranges into 100-ft slices with per-slice rates.
 
     Accepts either ORM rows or the request DTO — they share the fields
-    this function cares about. ``step_up`` ranges use the previous slice's
-    rate as their starting point (0 if there is no predecessor).
+    this function cares about.
+
+    ``rate`` semantics depend on mode:
+
+    * ``FIXED``   — ``rate`` is cost **per foot**, so the per-100-ft rate
+      surfaced on each derived slice is ``rate * 100``.
+    * ``STEP_UP`` — ``rate`` is a cost-per-100-ft **increment**. Each
+      slice's per-100-ft rate is the previous slice's per-100-ft rate
+      plus ``rate``, starting from 0 if there is no predecessor.
     """
     slices: List[DerivedSlice] = []
     prev_rate = 0.0
@@ -171,7 +178,7 @@ def derive_slices(ranges: List[RateRange] | List[RateRangeIn]) -> List[DerivedSl
         start = r.start_ft
         while start < r.end_ft:
             if r.mode == RateRangeMode.FIXED:
-                this_rate = r.rate
+                this_rate = r.rate * 100.0
             else:  # STEP_UP
                 this_rate = prev_rate + r.rate
             slices.append(
