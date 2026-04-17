@@ -49,11 +49,6 @@ export default function Calculator({ onUnauthorized }: Props) {
 
   return (
     <div className="calculator">
-      <section className="card">
-        <h2>Rate ladder</h2>
-        <p className="muted">Reference only — managed by admins.</p>
-        <RatesTable editable={false} onUnauthorized={onUnauthorized} />
-      </section>
       <form className="card" onSubmit={handleSubmit}>
         <h2>Calculate</h2>
         <label>
@@ -147,6 +142,14 @@ export default function Calculator({ onUnauthorized }: Props) {
           </div>
         )}
       </form>
+
+      {result && (
+        <section className="card">
+          <h2>Rate ladder</h2>
+          <p className="muted">Reference only — managed by admins.</p>
+          <RatesTable editable={false} onUnauthorized={onUnauthorized} />
+        </section>
+      )}
     </div>
   );
 }
