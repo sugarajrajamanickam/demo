@@ -187,3 +187,221 @@ body,
     max-width: none;
   }
 }
+
+/* ----- Header nav / session ---------------------------------------------- */
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.header-nav {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.nav-btn {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.75);
+  border: 1px solid transparent;
+  padding: 0.35rem 0.8rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.nav-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.nav-btn.active {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.session-info {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* ----- Role pills -------------------------------------------------------- */
+.role-pill {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+}
+
+.role-pill.role-admin {
+  background: rgba(37, 99, 235, 0.15);
+  color: #1d4ed8;
+}
+
+.role-pill.role-manager {
+  background: rgba(100, 116, 139, 0.2);
+  color: #334155;
+}
+
+.app-header .role-pill.role-admin {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.app-header .role-pill.role-manager {
+  background: rgba(255, 255, 255, 0.12);
+  color: #e2e8f0;
+}
+
+/* ----- Admin page -------------------------------------------------------- */
+.admin {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  width: 100%;
+  max-width: 960px;
+}
+
+.admin-card {
+  max-width: none;
+}
+
+.admin-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem 1rem;
+  align-items: end;
+}
+
+.admin-form button[type="submit"] {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  padding: 0.7rem 1rem;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  height: fit-content;
+}
+
+.admin-form button[type="submit"]:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+
+.admin-form select,
+.admin-form input {
+  font-size: 0.95rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  background: #fff;
+  width: 100%;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+.admin-list table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.admin-list th,
+.admin-list td {
+  text-align: left;
+  padding: 0.55rem 0.65rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.admin-list th {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: #f8fafc;
+}
+
+.admin-list input,
+.admin-list select {
+  font-size: 0.9rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  width: 100%;
+  min-width: 120px;
+}
+
+.row-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.row-actions button {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  padding: 0.35rem 0.7rem;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.row-actions button:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+
+.row-actions button.secondary {
+  background: #e2e8f0;
+  color: var(--text);
+}
+
+.row-actions button.danger {
+  background: var(--error);
+}
+
+.row-actions button.danger:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+.row-actions button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.self-badge {
+  margin-left: 0.4rem;
+  font-size: 0.7rem;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.05rem 0.4rem;
+}
+
+.muted {
+  color: var(--muted);
+}

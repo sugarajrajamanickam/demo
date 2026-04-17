@@ -1,18 +1,34 @@
 const TOKEN_KEY = "demo_access_token";
+const ROLE_KEY = "demo_role";
+
+export type Role = "admin" | "manager";
 
 export function getToken(): string | null {
   return localStorage.getItem(TOKEN_KEY);
 }
 
-export function setToken(token: string): void {
+export function getRole(): Role | null {
+  const r = localStorage.getItem(ROLE_KEY);
+  return r === "admin" || r === "manager" ? r : null;
+}
+
+export function setSession(token: string, role: Role): void {
   localStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(ROLE_KEY, role);
 }
 
 export function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(ROLE_KEY);
 }
 
-export async function login(username: string, password: string): Promise<string> {
+interface TokenResponse {
+  access_token: string;
+  token_type: string;
+  role: Role;
+}
+
+export async function login(username: string, password: string): Promise<{ token: string; role: Role }> {
   const body = new URLSearchParams();
   body.set("username", username);
   body.set("password", password);
@@ -26,9 +42,37 @@ export async function login(username: string, password: string): Promise<string>
   if (!res.ok) {
     throw new Error(res.status === 401 ? "Invalid username or password" : `Login failed (${res.status})`);
   }
-  const data = (await res.json()) as { access_token: string };
-  setToken(data.access_token);
-  return data.access_token;
+  const data = (await res.json()) as TokenResponse;
+  setSession(data.access_token, data.role);
+  return { token: data.access_token, role: data.role };
+}
+
+function authHeader(): Record<string, string> {
+  const token = getToken();
+  if (!token) throw new Error("Not authenticated");
+  return { Authorization: `Bearer ${token}` };
+}
+
+async function handle<T>(res: Response): Promise<T> {
+  if (res.status === 401) {
+    clearToken();
+    throw new Error("Session expired — please log in again");
+  }
+  if (res.status === 403) {
+    throw new Error("Forbidden — admin role required");
+  }
+  if (!res.ok) {
+    let detail = `Request failed (${res.status})`;
+    try {
+      const body = await res.json();
+      if (body && typeof body.detail === "string") detail = body.detail;
+    } catch {
+      // ignore
+    }
+    throw new Error(detail);
+  }
+  if (res.status === 204) return undefined as T;
+  return (await res.json()) as T;
 }
 
 export interface AddResponse {
@@ -38,24 +82,78 @@ export interface AddResponse {
 }
 
 export async function addValues(depth: number, casing: number): Promise<AddResponse> {
-  const token = getToken();
-  if (!token) throw new Error("Not authenticated");
-
   const res = await fetch("/api/add", {
     method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
+    headers: { "Content-Type": "application/json", ...authHeader() },
     body: JSON.stringify({ depth, casing }),
   });
+  return handle<AddResponse>(res);
+}
 
-  if (res.status === 401) {
-    clearToken();
-    throw new Error("Session expired — please log in again");
+export interface Me {
+  id: number;
+  username: string;
+  mobile: string;
+  role: Role;
+  full_name: string | null;
+}
+
+export async function fetchMe(): Promise<Me> {
+  const res = await fetch("/api/me", { headers: { ...authHeader() } });
+  return handle<Me>(res);
+}
+
+export interface AdminUser {
+  id: number;
+  username: string;
+  mobile: string;
+  role: Role;
+  full_name: string | null;
+}
+
+export interface AdminUserCreate {
+  username: string;
+  mobile: string;
+  password: string;
+  role: Role;
+  full_name?: string | null;
+}
+
+export type AdminUserUpdate = Partial<AdminUserCreate>;
+
+export async function listUsers(): Promise<AdminUser[]> {
+  const res = await fetch("/api/admin/users", { headers: { ...authHeader() } });
+  return handle<AdminUser[]>(res);
+}
+
+export async function createUser(payload: AdminUserCreate): Promise<AdminUser> {
+  const res = await fetch("/api/admin/users", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeader() },
+    body: JSON.stringify(payload),
+  });
+  return handle<AdminUser>(res);
+}
+
+export async function updateUser(id: number, payload: AdminUserUpdate): Promise<AdminUser> {
+  // Strip empty-string values so we don't accidentally overwrite fields.
+  const clean: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(payload)) {
+    if (v === undefined || v === null || v === "") continue;
+    clean[k] = v;
   }
-  if (!res.ok) {
-    throw new Error(`Request failed (${res.status})`);
-  }
-  return (await res.json()) as AddResponse;
+  const res = await fetch(`/api/admin/users/${id}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...authHeader() },
+    body: JSON.stringify(clean),
+  });
+  return handle<AdminUser>(res);
+}
+
+export async function deleteUser(id: number): Promise<void> {
+  const res = await fetch(`/api/admin/users/${id}`, {
+    method: "DELETE",
+    headers: { ...authHeader() },
+  });
+  await handle<void>(res);
 }

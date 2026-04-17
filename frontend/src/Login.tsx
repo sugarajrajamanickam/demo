@@ -1,8 +1,8 @@
 import { FormEvent, useState } from "react";
-import { login } from "./api";
+import { Role, login } from "./api";
 
 interface Props {
-  onLogin: (token: string) => void;
+  onLogin: (token: string, role: Role) => void;
 }
 
 export default function Login({ onLogin }: Props) {
@@ -16,8 +16,8 @@ export default function Login({ onLogin }: Props) {
     setError(null);
     setBusy(true);
     try {
-      const token = await login(username, password);
-      onLogin(token);
+      const { token, role } = await login(username, password);
+      onLogin(token, role);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Login failed");
     } finally {

@@ -10,15 +10,20 @@ from fastapi.responses import FileResponse
 from fastapi.security import OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from sqlmodel import Session
 
+from .admin import router as admin_router
 from .auth import (
     Token,
+    authenticate_user,
+    bootstrap_admin,
     create_access_token,
     get_current_user,
-    verify_credentials,
 )
+from .db import get_session, init_db
+from .models import User
 
-app = FastAPI(title="Depth & Casing Demo", version="1.0.0")
+app = FastAPI(title="Depth & Casing Demo", version="2.0.0")
 
 # CORS: permissive by default so the Vite dev server (5173) can hit the API.
 # Override APP_CORS_ORIGINS in production with a comma-separated allowlist.
@@ -39,6 +44,12 @@ app.add_middleware(
 )
 
 
+@app.on_event("startup")
+def _on_startup() -> None:
+    init_db()
+    bootstrap_admin()
+
+
 class AddRequest(BaseModel):
     depth: float = Field(..., description="Depth value")
     casing: float = Field(..., description="Casing value")
@@ -50,26 +61,45 @@ class AddResponse(BaseModel):
     sum: float
 
 
+class MeResponse(BaseModel):
+    id: int
+    username: str
+    mobile: str
+    role: str
+    full_name: str | None = None
+
+
 @app.post("/token", response_model=Token, tags=["auth"])
-def login(form_data: OAuth2PasswordRequestForm = Depends()) -> Token:
-    if not verify_credentials(form_data.username, form_data.password):
+def login(
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    session: Session = Depends(get_session),
+) -> Token:
+    user = authenticate_user(session, form_data.username, form_data.password)
+    if user is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Incorrect username or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    return Token(access_token=create_access_token(form_data.username))
+    return Token(access_token=create_access_token(user), role=user.role)
 
 
-@app.get("/api/me", tags=["auth"])
-def read_me(current_user: str = Depends(get_current_user)) -> dict[str, str]:
-    return {"username": current_user}
+@app.get("/api/me", response_model=MeResponse, tags=["auth"])
+def read_me(current_user: User = Depends(get_current_user)) -> MeResponse:
+    assert current_user.id is not None
+    return MeResponse(
+        id=current_user.id,
+        username=current_user.username,
+        mobile=current_user.mobile,
+        role=current_user.role.value,
+        full_name=current_user.full_name,
+    )
 
 
 @app.post("/api/add", response_model=AddResponse, tags=["compute"])
 def add_values(
     payload: AddRequest,
-    _: str = Depends(get_current_user),
+    _: User = Depends(get_current_user),
 ) -> AddResponse:
     return AddResponse(
         depth=payload.depth,
@@ -81,6 +111,9 @@ def add_values(
 @app.get("/api/health", tags=["meta"])
 def health() -> dict[str, str]:
     return {"status": "ok"}
+
+
+app.include_router(admin_router)
 
 
 # ---------------------------------------------------------------------------
