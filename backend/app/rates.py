@@ -117,8 +117,20 @@ router = APIRouter(tags=["rates"])
 # ---------------------------------------------------------------------------
 
 
+#: Soft cap on how many 100-ft slices the ladder may expand into. Keeps
+#: ``derive_slices`` + ``GET /api/rates`` bounded even if an admin (or
+#: compromised admin token) submits a very wide range. 300 slices covers
+#: 30_000 ft, comfortably beyond the default 3_000 ft display ladder.
+MAX_DERIVED_SLICES: int = 300
+
+
 def validate_range_chain(ranges: List[RateRangeIn]) -> None:
-    """Raise ``ValueError`` if the ranges aren't a contiguous chain from 0."""
+    """Raise ``ValueError`` if the ranges aren't a contiguous chain from 0.
+
+    Contiguity (``start_ft == prev_end``) alone already rules out overlaps,
+    but we also enforce the weaker ``start_ft >= prev_end`` explicitly first
+    so the error message is unambiguous when ranges overlap (vs. have gaps).
+    """
     if not ranges:
         raise ValueError("At least one range is required")
     if ranges[0].start_ft != 0:
@@ -126,12 +138,24 @@ def validate_range_chain(ranges: List[RateRangeIn]) -> None:
 
     prev_end = 0
     for idx, r in enumerate(ranges):
+        if r.start_ft < prev_end:
+            raise ValueError(
+                f"Range {idx + 1} starts at {r.start_ft} ft which overlaps the "
+                f"previous range ending at {prev_end} ft"
+            )
         if r.start_ft != prev_end:
             raise ValueError(
                 f"Range {idx + 1} starts at {r.start_ft} ft but the previous range "
                 f"ends at {prev_end} ft (ranges must be contiguous with no gaps)"
             )
         prev_end = r.end_ft
+
+    total_slices = sum((r.end_ft - r.start_ft) // 100 for r in ranges)
+    if total_slices > MAX_DERIVED_SLICES:
+        raise ValueError(
+            f"Ladder is too long: {total_slices} 100-ft slices "
+            f"(max {MAX_DERIVED_SLICES} = {MAX_DERIVED_SLICES * 100} ft)"
+        )
 
 
 def derive_slices(ranges: List[RateRange] | List[RateRangeIn]) -> List[DerivedSlice]:
