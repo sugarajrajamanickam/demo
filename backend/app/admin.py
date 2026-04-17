@@ -3,8 +3,10 @@ from __future__ import annotations
 
 from typing import List, Optional
 
+import re
+
 from fastapi import APIRouter, Depends, HTTPException, Response, status
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from sqlmodel import Session, select
 
 from .auth import hash_password, require_admin
@@ -37,20 +39,48 @@ class UserOut(BaseModel):
         )
 
 
+# Input validation patterns.
+# - Usernames are alphabetic only (no spaces, digits, or symbols).
+# - Mobile numbers must be exactly 10 digits.
+# - Passwords allow letters, digits, '@' and '.' only.
+# - Full names allow letters and spaces (so e.g. "Alice Manager" works).
+USERNAME_PATTERN = r"^[A-Za-z]+$"
+MOBILE_PATTERN = r"^\d{10}$"
+PASSWORD_PATTERN = r"^[A-Za-z0-9@.]+$"
+FULL_NAME_PATTERN = r"^[A-Za-z ]+$"
+
+USERNAME_MSG = "Username must contain letters only (A-Z, a-z)."
+MOBILE_MSG = "Mobile number must be exactly 10 digits."
+PASSWORD_MSG = "Password may contain only letters, digits, '@' and '.'."
+FULL_NAME_MSG = "Full name must contain letters and spaces only."
+
+
 class UserCreate(BaseModel):
-    username: str = Field(..., min_length=1, max_length=64)
-    mobile: str = Field(..., min_length=1, max_length=32)
-    password: str = Field(..., min_length=1, max_length=128)
+    username: str = Field(..., min_length=1, max_length=64, pattern=USERNAME_PATTERN)
+    mobile: str = Field(..., pattern=MOBILE_PATTERN)
+    password: str = Field(..., min_length=1, max_length=128, pattern=PASSWORD_PATTERN)
     role: Role
-    full_name: Optional[str] = Field(default=None, max_length=128)
+    full_name: Optional[str] = Field(default=None, max_length=128, pattern=FULL_NAME_PATTERN)
 
 
 class UserUpdate(BaseModel):
-    username: Optional[str] = Field(default=None, min_length=1, max_length=64)
-    mobile: Optional[str] = Field(default=None, min_length=1, max_length=32)
-    password: Optional[str] = Field(default=None, min_length=1, max_length=128)
+    username: Optional[str] = Field(default=None, min_length=1, max_length=64, pattern=USERNAME_PATTERN)
+    mobile: Optional[str] = Field(default=None, pattern=MOBILE_PATTERN)
+    password: Optional[str] = Field(default=None, min_length=1, max_length=128, pattern=PASSWORD_PATTERN)
     role: Optional[Role] = None
+    # full_name is optional on update; empty string is allowed (clears the field).
     full_name: Optional[str] = Field(default=None, max_length=128)
+
+    @field_validator("full_name")
+    @classmethod
+    def _validate_full_name(cls, v: Optional[str]) -> Optional[str]:
+        # Allow None and empty string (explicit clear). Otherwise enforce the
+        # letters-and-spaces rule so updates match create-time validation.
+        if v is None or v == "":
+            return v
+        if not re.fullmatch(FULL_NAME_PATTERN, v):
+            raise ValueError(FULL_NAME_MSG)
+        return v
 
 
 def _get_user_or_404(session: Session, user_id: int) -> User:

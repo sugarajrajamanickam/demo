@@ -9,6 +9,17 @@ import {
   listUsers,
   updateUser,
 } from "./api";
+import {
+  FULL_NAME_HTML_PATTERN,
+  FULL_NAME_MSG,
+  MOBILE_HTML_PATTERN,
+  MOBILE_MSG,
+  PASSWORD_HTML_PATTERN,
+  PASSWORD_MSG,
+  USERNAME_HTML_PATTERN,
+  USERNAME_MSG,
+  validateUserFields,
+} from "./validation";
 
 interface Props {
   onUnauthorized: () => void;
@@ -54,6 +65,19 @@ export default function Admin({ onUnauthorized, currentUsername }: Props) {
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
+    const validationError = validateUserFields(
+      {
+        username: form.username,
+        mobile: form.mobile,
+        password: form.password,
+        full_name: form.full_name ?? "",
+      },
+      { requirePassword: true }
+    );
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
     setSubmitting(true);
     try {
       await createUser(form);
@@ -84,6 +108,19 @@ export default function Admin({ onUnauthorized, currentUsername }: Props) {
 
   const saveEdit = async (id: number) => {
     setError(null);
+    const validationError = validateUserFields(
+      {
+        username: editDraft.username ?? "",
+        mobile: editDraft.mobile ?? "",
+        password: editDraft.password ?? "",
+        full_name: editDraft.full_name ?? "",
+      },
+      { requirePassword: false }
+    );
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
     try {
       await updateUser(id, editDraft);
       cancelEdit();
@@ -115,6 +152,10 @@ export default function Admin({ onUnauthorized, currentUsername }: Props) {
               required
               value={form.username}
               onChange={(e) => setForm({ ...form, username: e.target.value })}
+              pattern={USERNAME_HTML_PATTERN}
+              title={USERNAME_MSG}
+              maxLength={64}
+              autoComplete="off"
             />
           </label>
           <label>
@@ -123,7 +164,11 @@ export default function Admin({ onUnauthorized, currentUsername }: Props) {
               required
               value={form.mobile}
               onChange={(e) => setForm({ ...form, mobile: e.target.value })}
-              inputMode="tel"
+              inputMode="numeric"
+              pattern={MOBILE_HTML_PATTERN}
+              title={MOBILE_MSG}
+              maxLength={10}
+              minLength={10}
             />
           </label>
           <label>
@@ -134,6 +179,9 @@ export default function Admin({ onUnauthorized, currentUsername }: Props) {
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
               autoComplete="new-password"
+              pattern={PASSWORD_HTML_PATTERN}
+              title={PASSWORD_MSG}
+              maxLength={128}
             />
           </label>
           <label>
@@ -151,6 +199,10 @@ export default function Admin({ onUnauthorized, currentUsername }: Props) {
             <input
               value={form.full_name ?? ""}
               onChange={(e) => setForm({ ...form, full_name: e.target.value })}
+              pattern={FULL_NAME_HTML_PATTERN}
+              title={FULL_NAME_MSG}
+              maxLength={128}
+              autoComplete="off"
             />
           </label>
           <button type="submit" disabled={submitting}>
@@ -188,6 +240,9 @@ export default function Admin({ onUnauthorized, currentUsername }: Props) {
                           <input
                             value={editDraft.username ?? ""}
                             onChange={(e) => setEditDraft({ ...editDraft, username: e.target.value })}
+                            pattern={USERNAME_HTML_PATTERN}
+                            title={USERNAME_MSG}
+                            maxLength={64}
                           />
                         ) : (
                           <>
@@ -201,6 +256,11 @@ export default function Admin({ onUnauthorized, currentUsername }: Props) {
                           <input
                             value={editDraft.mobile ?? ""}
                             onChange={(e) => setEditDraft({ ...editDraft, mobile: e.target.value })}
+                            inputMode="numeric"
+                            pattern={MOBILE_HTML_PATTERN}
+                            title={MOBILE_MSG}
+                            maxLength={10}
+                            minLength={10}
                           />
                         ) : (
                           u.mobile
@@ -224,6 +284,9 @@ export default function Admin({ onUnauthorized, currentUsername }: Props) {
                           <input
                             value={editDraft.full_name ?? ""}
                             onChange={(e) => setEditDraft({ ...editDraft, full_name: e.target.value })}
+                            pattern={FULL_NAME_HTML_PATTERN}
+                            title={FULL_NAME_MSG}
+                            maxLength={128}
                           />
                         ) : (
                           u.full_name ?? <span className="muted">—</span>
@@ -237,6 +300,9 @@ export default function Admin({ onUnauthorized, currentUsername }: Props) {
                             value={editDraft.password ?? ""}
                             onChange={(e) => setEditDraft({ ...editDraft, password: e.target.value })}
                             autoComplete="new-password"
+                            pattern={PASSWORD_HTML_PATTERN}
+                            title={PASSWORD_MSG}
+                            maxLength={128}
                           />
                         ) : (
                           <span className="muted">•••••</span>

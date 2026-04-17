@@ -135,11 +135,16 @@ export async function createUser(payload: AdminUserCreate): Promise<AdminUser> {
   return handle<AdminUser>(res);
 }
 
+// Fields where an empty string is meaningless and should be dropped rather
+// than sent to the server (e.g. a blank "new password" input means "don't
+// change"). `full_name` is excluded so admins can deliberately clear it.
+const EMPTY_STRING_DROP_FIELDS = new Set(["username", "mobile", "password"]);
+
 export async function updateUser(id: number, payload: AdminUserUpdate): Promise<AdminUser> {
-  // Strip empty-string values so we don't accidentally overwrite fields.
   const clean: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(payload)) {
-    if (v === undefined || v === null || v === "") continue;
+    if (v === undefined || v === null) continue;
+    if (v === "" && EMPTY_STRING_DROP_FIELDS.has(k)) continue;
     clean[k] = v;
   }
   const res = await fetch(`/api/admin/users/${id}`, {

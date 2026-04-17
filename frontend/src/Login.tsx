@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
 import { Role, login } from "./api";
+import { USERNAME_HTML_PATTERN, USERNAME_MSG } from "./validation";
 
 interface Props {
   onLogin: (token: string, role: Role) => void;
@@ -36,6 +37,9 @@ export default function Login({ onLogin }: Props) {
           onChange={(e) => setUsername(e.target.value)}
           autoComplete="username"
           required
+          pattern={USERNAME_HTML_PATTERN}
+          title={USERNAME_MSG}
+          maxLength={64}
         />
       </label>
       <label>

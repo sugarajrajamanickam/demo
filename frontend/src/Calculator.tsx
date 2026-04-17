@@ -47,6 +47,7 @@ export default function Calculator({ onUnauthorized }: Props) {
         <input
           type="number"
           step="any"
+          min="0"
           value={depth}
           onChange={(e) => setDepth(e.target.value)}
           required
@@ -57,6 +58,7 @@ export default function Calculator({ onUnauthorized }: Props) {
         <input
           type="number"
           step="any"
+          min="0"
           value={casing}
           onChange={(e) => setCasing(e.target.value)}
           required

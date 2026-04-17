@@ -82,7 +82,9 @@ def create_access_token(user: User, expires_delta: Optional[timedelta] = None) -
     expire = datetime.now(timezone.utc) + (
         expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
-    to_encode = {"sub": user.username, "role": user.role.value, "exp": expire}
+    assert user.id is not None, "Cannot issue a token for an unsaved user"
+    # `sub` is the immutable user id so renames don't invalidate live sessions.
+    to_encode = {"sub": str(user.id), "role": user.role.value, "exp": expire}
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
@@ -100,13 +102,17 @@ def get_current_user(
 ) -> User:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: Optional[str] = payload.get("sub")
-        if username is None:
+        sub: Optional[str] = payload.get("sub")
+        if sub is None:
             raise _credentials_exception()
+        try:
+            user_id = int(sub)
+        except (TypeError, ValueError) as exc:
+            raise _credentials_exception() from exc
     except JWTError as exc:
         raise _credentials_exception() from exc
 
-    user = session.exec(select(User).where(User.username == username)).first()
+    user = session.get(User, user_id)
     if user is None:
         # Token is valid but the user has been deleted — treat as unauthenticated.
         raise _credentials_exception()

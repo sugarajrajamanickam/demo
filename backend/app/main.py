@@ -51,8 +51,8 @@ def _on_startup() -> None:
 
 
 class AddRequest(BaseModel):
-    depth: float = Field(..., description="Depth value")
-    casing: float = Field(..., description="Casing value")
+    depth: float = Field(..., ge=0, description="Depth value (must be >= 0)")
+    casing: float = Field(..., ge=0, description="Casing value (must be >= 0)")
 
 
 class AddResponse(BaseModel):
