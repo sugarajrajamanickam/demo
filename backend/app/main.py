@@ -22,14 +22,18 @@ app = FastAPI(title="Depth & Casing Demo", version="1.0.0")
 
 # CORS: permissive by default so the Vite dev server (5173) can hit the API.
 # Override APP_CORS_ORIGINS in production with a comma-separated allowlist.
+# Note: browsers reject `Access-Control-Allow-Origin: *` combined with
+# `Access-Control-Allow-Credentials: true`, so we only enable credentials
+# when an explicit allowlist is configured.
 cors_origins_env = os.getenv("APP_CORS_ORIGINS", "*")
+is_wildcard = cors_origins_env.strip() == "*"
 allow_origins = (
-    ["*"] if cors_origins_env.strip() == "*" else [o.strip() for o in cors_origins_env.split(",") if o.strip()]
+    ["*"] if is_wildcard else [o.strip() for o in cors_origins_env.split(",") if o.strip()]
 )
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allow_origins,
-    allow_credentials=True,
+    allow_credentials=not is_wildcard,
     allow_methods=["*"],
     allow_headers=["*"],
 )

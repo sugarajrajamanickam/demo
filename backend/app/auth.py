@@ -6,6 +6,7 @@ APP_SECRET_KEY and the credentials.
 """
 from __future__ import annotations
 
+import logging
 import os
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -16,7 +17,14 @@ from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel
 
-SECRET_KEY = os.getenv("APP_SECRET_KEY", "dev-secret-change-me")
+_DEFAULT_SECRET_KEY = "dev-secret-change-me"
+SECRET_KEY = os.getenv("APP_SECRET_KEY", _DEFAULT_SECRET_KEY)
+if SECRET_KEY == _DEFAULT_SECRET_KEY:
+    logging.getLogger(__name__).warning(
+        "APP_SECRET_KEY is unset; using the built-in development secret. "
+        "Set APP_SECRET_KEY to a strong random value before deploying — "
+        "anyone who knows the default secret can forge valid JWTs."
+    )
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("APP_TOKEN_EXPIRE_MINUTES", "60"))
 
