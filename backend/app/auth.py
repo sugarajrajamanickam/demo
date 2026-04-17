@@ -38,6 +38,10 @@ ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("APP_TOKEN_EXPIRE_MINUTES", "60"))
 BOOTSTRAP_USERNAME = os.getenv("APP_USERNAME", "admin")
 BOOTSTRAP_PASSWORD = os.getenv("APP_PASSWORD", "admin")
 BOOTSTRAP_MOBILE = os.getenv("APP_ADMIN_MOBILE", "0000000000")
+BOOTSTRAP_SECURITY_QUESTION = os.getenv(
+    "APP_ADMIN_SECURITY_QUESTION", "What is your favorite color?"
+)
+BOOTSTRAP_SECURITY_ANSWER = os.getenv("APP_ADMIN_SECURITY_ANSWER", "admin")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
 
@@ -67,6 +71,19 @@ def verify_password(password: str, password_hash: str) -> bool:
         return bcrypt.checkpw(_truncate_for_bcrypt(password), password_hash.encode("utf-8"))
     except ValueError:
         return False
+
+
+def normalize_security_answer(answer: str) -> str:
+    # Case-insensitive + whitespace-trim so "Blue " and "blue" both work.
+    return answer.strip().casefold()
+
+
+def hash_security_answer(answer: str) -> str:
+    return hash_password(normalize_security_answer(answer))
+
+
+def verify_security_answer(answer: str, answer_hash: str) -> bool:
+    return verify_password(normalize_security_answer(answer), answer_hash)
 
 
 def authenticate_user(session: Session, username: str, password: str) -> Optional[User]:
@@ -140,6 +157,8 @@ def bootstrap_admin() -> None:
             password_hash=hash_password(BOOTSTRAP_PASSWORD),
             role=Role.ADMIN,
             full_name="Bootstrap Admin",
+            security_question=BOOTSTRAP_SECURITY_QUESTION,
+            security_answer_hash=hash_security_answer(BOOTSTRAP_SECURITY_ANSWER),
         )
         session.add(admin)
         session.commit()

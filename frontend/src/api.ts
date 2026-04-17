@@ -109,6 +109,8 @@ export interface AdminUser {
   mobile: string;
   role: Role;
   full_name: string | null;
+  security_question: string | null;
+  has_security_question: boolean;
 }
 
 export interface AdminUserCreate {
@@ -117,9 +119,13 @@ export interface AdminUserCreate {
   password: string;
   role: Role;
   full_name: string;
+  security_question?: string | null;
+  security_answer?: string | null;
 }
 
-export type AdminUserUpdate = Partial<AdminUserCreate>;
+export type AdminUserUpdate = Partial<AdminUserCreate> & {
+  security_answer?: string;
+};
 
 export interface AdminUserPage {
   items: AdminUser[];
@@ -174,6 +180,52 @@ export async function updateUser(id: number, payload: AdminUserUpdate): Promise<
     body: JSON.stringify(clean),
   });
   return handle<AdminUser>(res);
+}
+
+// --- Password reset (unauthenticated) ---------------------------------------
+
+export async function forgotPassword(username: string): Promise<{ security_question: string }> {
+  const res = await fetch("/api/password/forgot", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username }),
+  });
+  if (!res.ok) {
+    let detail = `Request failed (${res.status})`;
+    try {
+      const body = await res.json();
+      if (body && typeof body.detail === "string") detail = body.detail;
+    } catch {
+      // ignore
+    }
+    throw new Error(detail);
+  }
+  return (await res.json()) as { security_question: string };
+}
+
+export async function resetPassword(
+  username: string,
+  security_answer: string,
+  new_password: string,
+): Promise<void> {
+  const res = await fetch("/api/password/reset", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, security_answer, new_password }),
+  });
+  if (!res.ok) {
+    let detail =
+      res.status === 401
+        ? "Security answer is incorrect"
+        : `Request failed (${res.status})`;
+    try {
+      const body = await res.json();
+      if (body && typeof body.detail === "string") detail = body.detail;
+    } catch {
+      // ignore
+    }
+    throw new Error(detail);
+  }
 }
 
 export async function deleteUser(id: number): Promise<void> {

@@ -1,6 +1,6 @@
 import { FormEvent, useState } from "react";
 import { Role, login } from "./api";
-import { USERNAME_HTML_PATTERN, USERNAME_MSG } from "./validation";
+import ForgotPassword from "./ForgotPassword";
 
 interface Props {
   onLogin: (token: string, role: Role) => void;
@@ -11,6 +11,7 @@ export default function Login({ onLogin }: Props) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -37,8 +38,6 @@ export default function Login({ onLogin }: Props) {
           onChange={(e) => setUsername(e.target.value)}
           autoComplete="username"
           required
-          pattern={USERNAME_HTML_PATTERN}
-          title={USERNAME_MSG}
           maxLength={64}
         />
       </label>
@@ -56,6 +55,19 @@ export default function Login({ onLogin }: Props) {
       <button type="submit" disabled={busy}>
         {busy ? "Signing in…" : "Sign in"}
       </button>
+      <button
+        type="button"
+        className="linklike"
+        onClick={() => setShowForgot(true)}
+      >
+        Forgot password?
+      </button>
+      {showForgot && (
+        <ForgotPassword
+          initialUsername={username}
+          onClose={() => setShowForgot(false)}
+        />
+      )}
     </form>
   );
 }

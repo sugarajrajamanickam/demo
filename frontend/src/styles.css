@@ -526,6 +526,60 @@ body,
   padding: 0.05rem 0.4rem;
 }
 
+.linklike {
+  background: transparent;
+  color: var(--primary);
+  padding: 0.2rem 0;
+  border: none;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 0.9rem;
+  align-self: flex-start;
+}
+
+.linklike:hover {
+  color: var(--primary-hover);
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 50;
+}
+
+.modal {
+  max-width: 420px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  margin: 0;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.modal-header h3 {
+  margin: 0;
+}
+
+.success {
+  color: #047857;
+  background: #d1fae5;
+  border: 1px solid #6ee7b7;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+}
+
 .muted {
   color: var(--muted);
 }

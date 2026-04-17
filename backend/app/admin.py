@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field, field_validator
 from sqlmodel import Session, func, select
 
-from .auth import hash_password, require_admin
+from .auth import hash_password, hash_security_answer, require_admin
 from .db import get_session
 from .models import Role, User
 
@@ -26,6 +26,10 @@ class UserOut(BaseModel):
     mobile: str
     role: Role
     full_name: Optional[str] = None
+    # Plain question is fine to expose to other admins so they can see which
+    # users can self-serve reset. The answer hash stays server-side only.
+    security_question: Optional[str] = None
+    has_security_question: bool = False
 
     @classmethod
     def from_user(cls, u: User) -> "UserOut":
@@ -36,6 +40,10 @@ class UserOut(BaseModel):
             mobile=u.mobile,
             role=u.role,
             full_name=u.full_name,
+            security_question=u.security_question,
+            has_security_question=bool(
+                u.security_question and u.security_answer_hash
+            ),
         )
 
 
@@ -54,6 +62,11 @@ MOBILE_MSG = "Mobile number must be exactly 10 digits."
 PASSWORD_MSG = "Password may contain only letters, digits, '@' and '.'."
 FULL_NAME_MSG = "Full name must contain letters and spaces only."
 
+# Security question / answer are free-form but bounded. We also require that
+# admins always have both set so they can self-serve a password reset.
+SECURITY_QUESTION_MAX = 255
+SECURITY_ANSWER_MAX = 128
+
 
 class UserCreate(BaseModel):
     username: str = Field(..., min_length=1, max_length=64, pattern=USERNAME_PATTERN)
@@ -62,6 +75,18 @@ class UserCreate(BaseModel):
     role: Role
     # Full name is mandatory at registration.
     full_name: str = Field(..., min_length=1, max_length=128, pattern=FULL_NAME_PATTERN)
+    # Security Q/A optional for managers; an admin-level create requires them
+    # (enforced below in `_validate_admin_has_security`).
+    security_question: Optional[str] = Field(default=None, max_length=SECURITY_QUESTION_MAX)
+    security_answer: Optional[str] = Field(default=None, max_length=SECURITY_ANSWER_MAX)
+
+    @field_validator("security_question", "security_answer")
+    @classmethod
+    def _strip_blank_to_none(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        v = v.strip()
+        return v or None
 
 
 class UserUpdate(BaseModel):
@@ -71,6 +96,10 @@ class UserUpdate(BaseModel):
     role: Optional[Role] = None
     # full_name is optional on update; empty string is allowed (clears the field).
     full_name: Optional[str] = Field(default=None, max_length=128)
+    # Security Q/A are update-only-if-provided. Sending an empty string clears
+    # both (only allowed on manager accounts — see update_user logic).
+    security_question: Optional[str] = Field(default=None, max_length=SECURITY_QUESTION_MAX)
+    security_answer: Optional[str] = Field(default=None, max_length=SECURITY_ANSWER_MAX)
 
     @field_validator("full_name")
     @classmethod
@@ -158,12 +187,35 @@ def create_user(payload: UserCreate, session: Session = Depends(get_session)) ->
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT, detail="Username already exists"
         )
+    # Admins must always have a security question + answer so they can
+    # self-serve a password reset if they forget their password (prevents
+    # lockout where the only admin can't log in).
+    if payload.role is Role.ADMIN and not (
+        payload.security_question and payload.security_answer
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Admins must set a security question and answer",
+        )
+    # Q + A come as a pair: reject half-configured security data.
+    if bool(payload.security_question) != bool(payload.security_answer):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Security question and answer must be set together",
+        )
+
     user = User(
         username=payload.username,
         mobile=payload.mobile,
         password_hash=hash_password(payload.password),
         role=payload.role,
         full_name=payload.full_name,
+        security_question=payload.security_question,
+        security_answer_hash=(
+            hash_security_answer(payload.security_answer)
+            if payload.security_answer
+            else None
+        ),
     )
     session.add(user)
     session.commit()
@@ -210,6 +262,35 @@ def update_user(
         # Normalize empty-string to NULL so "cleared" names render as the
         # "—" placeholder in the UI (which uses `?? "—"` — nullish only).
         user.full_name = payload.full_name or None
+
+    # --- Security Q/A updates -----------------------------------------------
+    # Treat None as "don't touch". Treat empty string as "clear both" (only
+    # valid for managers — admins must always have Q/A set).
+    new_q = payload.security_question
+    new_a = payload.security_answer
+    clearing = (new_q == "" and new_a == "")
+    effective_role = payload.role if payload.role is not None else user.role
+    if clearing:
+        if effective_role is Role.ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Admins must keep a security question and answer",
+            )
+        user.security_question = None
+        user.security_answer_hash = None
+    else:
+        if new_q is not None:
+            user.security_question = new_q or None
+        if new_a is not None and new_a != "":
+            user.security_answer_hash = hash_security_answer(new_a)
+    # After the update, an admin must have both question AND answer on file.
+    if effective_role is Role.ADMIN and not (
+        user.security_question and user.security_answer_hash
+    ):
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Admins must have a security question and answer",
+        )
 
     session.add(user)
     session.commit()

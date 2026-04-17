@@ -22,6 +22,7 @@ from .auth import (
 )
 from .db import get_session, init_db
 from .models import User
+from .password import router as password_router
 
 app = FastAPI(title="Depth & Casing Demo", version="2.0.0")
 
@@ -114,6 +115,7 @@ def health() -> dict[str, str]:
 
 
 app.include_router(admin_router)
+app.include_router(password_router)
 
 
 # ---------------------------------------------------------------------------

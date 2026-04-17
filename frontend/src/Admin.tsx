@@ -32,6 +32,8 @@ const emptyCreate: AdminUserCreate = {
   password: "",
   role: "manager",
   full_name: "",
+  security_question: "",
+  security_answer: "",
 };
 
 const Star = () => (
@@ -266,6 +268,31 @@ export default function Admin({ onUnauthorized, currentUsername }: Props) {
               onChange={(e) => setForm({ ...form, full_name: e.target.value })}
               pattern={FULL_NAME_HTML_PATTERN}
               title={FULL_NAME_MSG}
+              maxLength={128}
+              autoComplete="off"
+            />
+          </label>
+          <label>
+            <FieldLabel text="Security question" required={form.role === "admin"} />
+            <input
+              value={form.security_question ?? ""}
+              onChange={(e) =>
+                setForm({ ...form, security_question: e.target.value })
+              }
+              required={form.role === "admin"}
+              maxLength={255}
+              placeholder="e.g. What is your favorite color?"
+              autoComplete="off"
+            />
+          </label>
+          <label>
+            <FieldLabel text="Security answer" required={form.role === "admin"} />
+            <input
+              value={form.security_answer ?? ""}
+              onChange={(e) =>
+                setForm({ ...form, security_answer: e.target.value })
+              }
+              required={form.role === "admin"}
               maxLength={128}
               autoComplete="off"
             />
