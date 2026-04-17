@@ -97,11 +97,24 @@ body,
   font-weight: 500;
 }
 
-/* Red asterisk for mandatory form fields. */
+/* Red asterisk for mandatory form fields. Stays inline next to the
+   label text thanks to `.field-label-text` wrapping both. */
 .required-star {
   color: var(--error);
-  margin-left: 0.2rem;
+  margin-left: 0.15rem;
   font-weight: 700;
+  display: inline;
+  white-space: nowrap;
+}
+
+/* Groups the label text + asterisk into a single flex item so the
+   star renders inline with the label (not on its own row when the
+   parent label is `display: flex; flex-direction: column`). */
+.field-label-text {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0;
+  white-space: nowrap;
 }
 
 .required-star[aria-hidden="true"] {

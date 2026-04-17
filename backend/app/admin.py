@@ -112,11 +112,20 @@ def list_users(
 ) -> UserList:
     base_conditions = []
     if q:
-        like = f"%{q.lower()}%"
+        # Escape SQL LIKE wildcards so a literal "%" or "_" in the query
+        # doesn't degenerate into a match-everything pattern. We also
+        # escape the escape character itself.
+        escaped = (
+            q.lower()
+            .replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_")
+        )
+        like = f"%{escaped}%"
         base_conditions.append(
-            func.lower(User.username).like(like)
-            | func.lower(User.mobile).like(like)
-            | func.lower(func.coalesce(User.full_name, "")).like(like)
+            func.lower(User.username).like(like, escape="\\")
+            | func.lower(User.mobile).like(like, escape="\\")
+            | func.lower(func.coalesce(User.full_name, "")).like(like, escape="\\")
         )
     if role is not None:
         base_conditions.append(User.role == role)
@@ -198,7 +207,9 @@ def update_user(
     if payload.role is not None:
         user.role = payload.role
     if payload.full_name is not None:
-        user.full_name = payload.full_name
+        # Normalize empty-string to NULL so "cleared" names render as the
+        # "—" placeholder in the UI (which uses `?? "—"` — nullish only).
+        user.full_name = payload.full_name or None
 
     session.add(user)
     session.commit()

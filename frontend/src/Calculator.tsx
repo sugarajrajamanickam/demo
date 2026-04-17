@@ -43,7 +43,7 @@ export default function Calculator({ onUnauthorized }: Props) {
     <form className="card" onSubmit={handleSubmit}>
       <h2>Calculate</h2>
       <label>
-        Depth<span className="required-star" aria-hidden="true">*</span>
+        <span className="field-label-text">Depth<span className="required-star" aria-hidden="true">*</span></span>
         <input
           type="number"
           step="any"
@@ -54,7 +54,7 @@ export default function Calculator({ onUnauthorized }: Props) {
         />
       </label>
       <label>
-        Casing<span className="required-star" aria-hidden="true">*</span>
+        <span className="field-label-text">Casing<span className="required-star" aria-hidden="true">*</span></span>
         <input
           type="number"
           step="any"

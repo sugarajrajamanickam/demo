@@ -35,8 +35,13 @@ const emptyCreate: AdminUserCreate = {
 };
 
 const Star = () => (
-  <span className="required-star" aria-hidden="true">
-    *
+  <span className="required-star" aria-hidden="true">*</span>
+);
+
+const FieldLabel = ({ text, required }: { text: string; required?: boolean }) => (
+  <span className="field-label-text">
+    {text}
+    {required && <Star />}
   </span>
 );
 
@@ -206,7 +211,7 @@ export default function Admin({ onUnauthorized, currentUsername }: Props) {
         <h2>Add user</h2>
         <form className="admin-form" onSubmit={handleCreate}>
           <label>
-            Username<Star />
+            <FieldLabel text="Username" required />
             <input
               required
               value={form.username}
@@ -218,7 +223,7 @@ export default function Admin({ onUnauthorized, currentUsername }: Props) {
             />
           </label>
           <label>
-            Mobile number<Star />
+            <FieldLabel text="Mobile number" required />
             <input
               required
               value={form.mobile}
@@ -231,7 +236,7 @@ export default function Admin({ onUnauthorized, currentUsername }: Props) {
             />
           </label>
           <label>
-            Password<Star />
+            <FieldLabel text="Password" required />
             <input
               required
               type="password"
@@ -244,7 +249,7 @@ export default function Admin({ onUnauthorized, currentUsername }: Props) {
             />
           </label>
           <label>
-            Role
+            <FieldLabel text="Role" />
             <select
               value={form.role}
               onChange={(e) => setForm({ ...form, role: e.target.value as Role })}
@@ -254,8 +259,9 @@ export default function Admin({ onUnauthorized, currentUsername }: Props) {
             </select>
           </label>
           <label>
-            Full name (optional)
+            <FieldLabel text="Full name" required />
             <input
+              required
               value={form.full_name ?? ""}
               onChange={(e) => setForm({ ...form, full_name: e.target.value })}
               pattern={FULL_NAME_HTML_PATTERN}
