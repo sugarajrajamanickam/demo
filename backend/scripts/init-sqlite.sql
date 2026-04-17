@@ -26,4 +26,4 @@ CREATE TABLE IF NOT EXISTS user (
     created_at           TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS ix_user_username ON user(username);
+CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username ON users(username);
