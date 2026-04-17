@@ -23,8 +23,9 @@ from .auth import (
 from .db import get_session, init_db
 from .models import User
 from .password import router as password_router
+from .rates import bootstrap_rate_tiers, router as rates_router
 
-app = FastAPI(title="Depth & Casing Demo", version="2.0.0")
+app = FastAPI(title="SVLS Rig Service", version="2.1.0")
 
 # CORS: permissive by default so the Vite dev server (5173) can hit the API.
 # Override APP_CORS_ORIGINS in production with a comma-separated allowlist.
@@ -49,6 +50,7 @@ app.add_middleware(
 def _on_startup() -> None:
     init_db()
     bootstrap_admin()
+    bootstrap_rate_tiers()
 
 
 class AddRequest(BaseModel):
@@ -116,6 +118,7 @@ def health() -> dict[str, str]:
 
 app.include_router(admin_router)
 app.include_router(password_router)
+app.include_router(rates_router)
 
 
 # ---------------------------------------------------------------------------

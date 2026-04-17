@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
 import { AddResponse, addValues } from "./api";
+import RatesTable from "./RatesTable";
 
 interface Props {
   onUnauthorized: () => void;
@@ -40,50 +41,63 @@ export default function Calculator({ onUnauthorized }: Props) {
   };
 
   return (
-    <form className="card" onSubmit={handleSubmit}>
-      <h2>Calculate</h2>
-      <label>
-        <span className="field-label-text">Depth<span className="required-star" aria-hidden="true">*</span></span>
-        <input
-          type="number"
-          step="any"
-          min="0"
-          value={depth}
-          onChange={(e) => setDepth(e.target.value)}
-          required
-        />
-      </label>
-      <label>
-        <span className="field-label-text">Casing<span className="required-star" aria-hidden="true">*</span></span>
-        <input
-          type="number"
-          step="any"
-          min="0"
-          value={casing}
-          onChange={(e) => setCasing(e.target.value)}
-          required
-        />
-      </label>
-      {error && <p className="error">{error}</p>}
-      <button type="submit" disabled={busy}>
-        {busy ? "Computing…" : "Compute"}
-      </button>
-      {result && (
-        <div className="result" data-testid="result">
-          <div>
-            <span>Depth</span>
-            <strong>{result.depth}</strong>
+    <div className="calculator">
+      <section className="card">
+        <h2>Rates per 100 ft</h2>
+        <p className="muted">Reference only — managed by admins.</p>
+        <RatesTable editable={false} onUnauthorized={onUnauthorized} />
+      </section>
+      <form className="card" onSubmit={handleSubmit}>
+        <h2>Calculate</h2>
+        <label>
+          <span className="field-label-text">
+            Depth
+            <span className="required-star" aria-hidden="true">*</span>
+          </span>
+          <input
+            type="number"
+            step="any"
+            min="0"
+            value={depth}
+            onChange={(e) => setDepth(e.target.value)}
+            required
+          />
+        </label>
+        <label>
+          <span className="field-label-text">
+            Casing
+            <span className="required-star" aria-hidden="true">*</span>
+          </span>
+          <input
+            type="number"
+            step="any"
+            min="0"
+            value={casing}
+            onChange={(e) => setCasing(e.target.value)}
+            required
+          />
+        </label>
+        {error && <p className="error">{error}</p>}
+        <button type="submit" disabled={busy}>
+          {busy ? "Computing…" : "Compute"}
+        </button>
+        {result && (
+          <div className="result" data-testid="result">
+            <div>
+              <span>Depth</span>
+              <strong>{result.depth}</strong>
+            </div>
+            <div>
+              <span>Casing</span>
+              <strong>{result.casing}</strong>
+            </div>
+            <div className="sum">
+              <span>Sum</span>
+              <strong>{result.sum}</strong>
+            </div>
           </div>
-          <div>
-            <span>Casing</span>
-            <strong>{result.casing}</strong>
-          </div>
-          <div className="sum">
-            <span>Sum</span>
-            <strong>{result.sum}</strong>
-          </div>
-        </div>
-      )}
-    </form>
+        )}
+      </form>
+    </div>
   );
 }

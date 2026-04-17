@@ -235,3 +235,28 @@ export async function deleteUser(id: number): Promise<void> {
   });
   await handle<void>(res);
 }
+
+// --- Rate tiers -------------------------------------------------------------
+
+export interface RateRow {
+  depth_ft: number;
+  rate: number;
+}
+
+export interface RatesResponse {
+  tiers: RateRow[];
+}
+
+export async function listRates(): Promise<RatesResponse> {
+  const res = await fetch("/api/rates", { headers: { ...authHeader() } });
+  return handle<RatesResponse>(res);
+}
+
+export async function updateRates(tiers: RateRow[]): Promise<RatesResponse> {
+  const res = await fetch("/api/admin/rates", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...authHeader() },
+    body: JSON.stringify({ tiers }),
+  });
+  return handle<RatesResponse>(res);
+}

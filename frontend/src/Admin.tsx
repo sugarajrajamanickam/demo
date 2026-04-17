@@ -9,6 +9,7 @@ import {
   listUsers,
   updateUser,
 } from "./api";
+import RatesTable from "./RatesTable";
 import {
   FULL_NAME_HTML_PATTERN,
   FULL_NAME_MSG,
@@ -503,6 +504,15 @@ export default function Admin({ onUnauthorized, currentUsername }: Props) {
             Next ›
           </button>
         </div>
+      </section>
+
+      <section className="card admin-card">
+        <h2>Rates per 100 ft</h2>
+        <p className="muted">
+          Rates apply from 100 ft up to 1000 ft. Users see this table read-only
+          on the Calculate page.
+        </p>
+        <RatesTable editable={true} onUnauthorized={onUnauthorized} />
       </section>
     </div>
   );

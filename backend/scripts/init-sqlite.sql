@@ -27,3 +27,13 @@ CREATE TABLE IF NOT EXISTS user (
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username ON users(username);
+
+-- Rate per 100 ft of depth. The application seeds 10 rows on first boot
+-- (depth_ft IN (100, 200, ..., 1000)) with rate=0.0 — admins can edit
+-- the rates from the Admin page; managers see them read-only on the
+-- Calculate page.
+CREATE TABLE IF NOT EXISTS rate_tiers (
+    depth_ft   INTEGER PRIMARY KEY,
+    rate       REAL    NOT NULL DEFAULT 0,
+    updated_at TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
+);

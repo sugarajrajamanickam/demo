@@ -31,3 +31,18 @@ class User(SQLModel, table=True):
     security_question: Optional[str] = Field(default=None, max_length=255)
     security_answer_hash: Optional[str] = Field(default=None, max_length=255)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class RateTier(SQLModel, table=True):
+    """Rate charged per 100 feet of depth.
+
+    Keyed by ``depth_ft`` which is restricted (at the API layer) to the
+    fixed ladder 100, 200, 300, ..., 1000. Exactly 10 rows are seeded on
+    first boot so the UI always has something to render.
+    """
+
+    __tablename__ = "rate_tiers"
+
+    depth_ft: int = Field(primary_key=True, ge=100, le=1000)
+    rate: float = Field(default=0.0, ge=0)
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

@@ -57,7 +57,7 @@ export default function App() {
     <div className="app-shell">
       <header className="app-header">
         <div className="header-left">
-          <h1>Depth &amp; Casing</h1>
+          <h1>SVLS Rig Service</h1>
           {token && (
             <nav className="header-nav">
               <button
