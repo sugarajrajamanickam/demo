@@ -331,6 +331,106 @@ body,
   overflow-x: auto;
 }
 
+/* Vertical scroll for the paginated users table so large pages don't
+   stretch the page. A sticky header keeps column labels visible. */
+.table-scroll {
+  max-height: 460px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.table-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+/* Header row + filter/pagination controls on the admin Users card. */
+.admin-list-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.admin-list-header h2 {
+  margin: 0;
+}
+
+.admin-list-meta {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.admin-list-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin: 0.4rem 0 0.8rem;
+}
+
+.admin-list-controls .filter-input {
+  flex: 1 1 220px;
+  min-width: 180px;
+  font-size: 0.9rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.admin-list-controls select {
+  font-size: 0.9rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.admin-list-controls .page-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.admin-list-controls button.secondary {
+  background: #e2e8f0;
+  color: var(--text);
+  border: none;
+  padding: 0.4rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.pagination button.secondary {
+  background: #e2e8f0;
+  color: var(--text);
+  border: none;
+  padding: 0.4rem 0.8rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.pagination button.secondary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .admin-list table {
   width: 100%;
   border-collapse: collapse;

@@ -5,9 +5,9 @@ from typing import List, Optional
 
 import re
 
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Query, Response, status
 from pydantic import BaseModel, Field, field_validator
-from sqlmodel import Session, select
+from sqlmodel import Session, func, select
 
 from .auth import hash_password, require_admin
 from .db import get_session
@@ -91,10 +91,55 @@ def _get_user_or_404(session: Session, user_id: int) -> User:
     return user
 
 
-@router.get("/users", response_model=List[UserOut])
-def list_users(session: Session = Depends(get_session)) -> List[UserOut]:
-    users = session.exec(select(User).order_by(User.id)).all()
-    return [UserOut.from_user(u) for u in users]
+class UserList(BaseModel):
+    items: List[UserOut]
+    total: int
+    limit: int
+    offset: int
+
+
+@router.get("/users", response_model=UserList)
+def list_users(
+    session: Session = Depends(get_session),
+    limit: int = Query(25, ge=1, le=100, description="Page size (1-100)."),
+    offset: int = Query(0, ge=0, description="Number of records to skip."),
+    q: Optional[str] = Query(
+        None,
+        description="Case-insensitive substring filter across username/mobile/full_name.",
+        max_length=128,
+    ),
+    role: Optional[Role] = Query(None, description="Filter to a specific role."),
+) -> UserList:
+    base_conditions = []
+    if q:
+        like = f"%{q.lower()}%"
+        base_conditions.append(
+            func.lower(User.username).like(like)
+            | func.lower(User.mobile).like(like)
+            | func.lower(func.coalesce(User.full_name, "")).like(like)
+        )
+    if role is not None:
+        base_conditions.append(User.role == role)
+
+    count_stmt = select(func.count()).select_from(User)
+    for cond in base_conditions:
+        count_stmt = count_stmt.where(cond)
+    total = session.exec(count_stmt).one()
+    if isinstance(total, tuple):  # some SQLAlchemy versions return a row tuple
+        total = total[0]
+
+    list_stmt = select(User).order_by(User.id)
+    for cond in base_conditions:
+        list_stmt = list_stmt.where(cond)
+    list_stmt = list_stmt.offset(offset).limit(limit)
+    users = session.exec(list_stmt).all()
+
+    return UserList(
+        items=[UserOut.from_user(u) for u in users],
+        total=int(total),
+        limit=limit,
+        offset=offset,
+    )
 
 
 @router.post("/users", response_model=UserOut, status_code=status.HTTP_201_CREATED)

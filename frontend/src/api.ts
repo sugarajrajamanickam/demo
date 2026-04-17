@@ -121,9 +121,30 @@ export interface AdminUserCreate {
 
 export type AdminUserUpdate = Partial<AdminUserCreate>;
 
-export async function listUsers(): Promise<AdminUser[]> {
-  const res = await fetch("/api/admin/users", { headers: { ...authHeader() } });
-  return handle<AdminUser[]>(res);
+export interface AdminUserPage {
+  items: AdminUser[];
+  total: number;
+  limit: number;
+  offset: number;
+}
+
+export interface ListUsersQuery {
+  limit?: number;
+  offset?: number;
+  q?: string;
+  role?: Role | "";
+}
+
+export async function listUsers(query: ListUsersQuery = {}): Promise<AdminUserPage> {
+  const params = new URLSearchParams();
+  params.set("limit", String(query.limit ?? 25));
+  params.set("offset", String(query.offset ?? 0));
+  if (query.q && query.q.trim().length > 0) params.set("q", query.q.trim());
+  if (query.role) params.set("role", query.role);
+  const res = await fetch(`/api/admin/users?${params.toString()}`, {
+    headers: { ...authHeader() },
+  });
+  return handle<AdminUserPage>(res);
 }
 
 export async function createUser(payload: AdminUserCreate): Promise<AdminUser> {

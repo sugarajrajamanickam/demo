@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useState } from "react";
+import { ChangeEvent, FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import {
   AdminUser,
   AdminUserCreate,
@@ -40,8 +40,11 @@ const Star = () => (
   </span>
 );
 
+const PAGE_SIZE_OPTIONS = [10, 25, 50, 100] as const;
+
 export default function Admin({ onUnauthorized, currentUsername }: Props) {
   const [users, setUsers] = useState<AdminUser[]>([]);
+  const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [form, setForm] = useState<AdminUserCreate>(emptyCreate);
@@ -49,12 +52,41 @@ export default function Admin({ onUnauthorized, currentUsername }: Props) {
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editDraft, setEditDraft] = useState<AdminUserUpdate & { password?: string }>({});
 
+  // Pagination + filter state.
+  const [pageSize, setPageSize] = useState<number>(25);
+  const [page, setPage] = useState<number>(0); // zero-indexed page
+  const [filterInput, setFilterInput] = useState<string>("");
+  const [filterQ, setFilterQ] = useState<string>(""); // debounced value sent to API
+  const [roleFilter, setRoleFilter] = useState<"" | Role>("");
+
+  // Debounce filter input so we don't hammer the API on every keystroke.
+  const debounceRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (debounceRef.current !== undefined) window.clearTimeout(debounceRef.current);
+    debounceRef.current = window.setTimeout(() => {
+      setFilterQ(filterInput);
+      setPage(0);
+    }, 250);
+    return () => {
+      if (debounceRef.current !== undefined) window.clearTimeout(debounceRef.current);
+    };
+  }, [filterInput]);
+
   const refresh = useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await listUsers();
-      setUsers(data);
+      const data = await listUsers({
+        limit: pageSize,
+        offset: page * pageSize,
+        q: filterQ,
+        role: roleFilter,
+      });
+      setUsers(data.items);
+      setTotal(data.total);
+      // If a delete / filter change leaves us past the last page, step back.
+      const maxPage = Math.max(0, Math.ceil(data.total / pageSize) - 1);
+      if (page > maxPage) setPage(maxPage);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Failed to load users";
       setError(message);
@@ -62,11 +94,32 @@ export default function Admin({ onUnauthorized, currentUsername }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [onUnauthorized]);
+  }, [onUnauthorized, page, pageSize, filterQ, roleFilter]);
 
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const rangeStart = total === 0 ? 0 : page * pageSize + 1;
+  const rangeEnd = Math.min(total, (page + 1) * pageSize);
+
+  const handlePageSizeChange = (e: ChangeEvent<HTMLSelectElement>) => {
+    setPageSize(Number(e.target.value));
+    setPage(0);
+  };
+
+  const handleRoleFilterChange = (e: ChangeEvent<HTMLSelectElement>) => {
+    setRoleFilter(e.target.value as "" | Role);
+    setPage(0);
+  };
+
+  const clearFilters = () => {
+    setFilterInput("");
+    setFilterQ("");
+    setRoleFilter("");
+    setPage(0);
+  };
 
   const handleCreate = async (e: FormEvent) => {
     e.preventDefault();
@@ -218,12 +271,53 @@ export default function Admin({ onUnauthorized, currentUsername }: Props) {
       </section>
 
       <section className="card admin-card admin-list">
-        <h2>Users</h2>
+        <div className="admin-list-header">
+          <h2>Users</h2>
+          <div className="admin-list-meta">
+            {total === 0 ? "No users" : `Showing ${rangeStart}-${rangeEnd} of ${total}`}
+          </div>
+        </div>
+
+        <div className="admin-list-controls">
+          <input
+            type="search"
+            placeholder="Filter by username, mobile, or full name…"
+            value={filterInput}
+            onChange={(e) => setFilterInput(e.target.value)}
+            className="filter-input"
+            aria-label="Filter users"
+          />
+          <select
+            value={roleFilter}
+            onChange={handleRoleFilterChange}
+            aria-label="Filter by role"
+          >
+            <option value="">All roles</option>
+            <option value="admin">admin</option>
+            <option value="manager">manager</option>
+          </select>
+          <label className="page-size">
+            Rows per page:
+            <select value={pageSize} onChange={handlePageSizeChange} aria-label="Rows per page">
+              {PAGE_SIZE_OPTIONS.map((n) => (
+                <option key={n} value={n}>
+                  {n}
+                </option>
+              ))}
+            </select>
+          </label>
+          {(filterInput || roleFilter) && (
+            <button type="button" className="secondary" onClick={clearFilters}>
+              Clear filters
+            </button>
+          )}
+        </div>
+
         {error && <p className="error">{error}</p>}
         {loading ? (
           <p>Loading…</p>
         ) : (
-          <div className="table-wrap">
+          <div className="table-wrap table-scroll">
             <table>
               <thead>
                 <tr>
@@ -348,6 +442,34 @@ export default function Admin({ onUnauthorized, currentUsername }: Props) {
             </table>
           </div>
         )}
+
+        {!loading && total === 0 && (
+          <p className="muted">
+            {filterQ || roleFilter ? "No users match your filters." : "No users yet."}
+          </p>
+        )}
+
+        <div className="pagination">
+          <button
+            type="button"
+            className="secondary"
+            disabled={page === 0 || loading}
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+          >
+            ‹ Prev
+          </button>
+          <span className="muted">
+            Page {page + 1} of {totalPages}
+          </span>
+          <button
+            type="button"
+            className="secondary"
+            disabled={page + 1 >= totalPages || loading}
+            onClick={() => setPage((p) => p + 1)}
+          >
+            Next ›
+          </button>
+        </div>
       </section>
     </div>
   );
