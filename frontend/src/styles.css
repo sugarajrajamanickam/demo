@@ -688,17 +688,60 @@ body,
   color: var(--muted);
 }
 
-.link-button {
-  background: none;
+.rate-ranges-editor button.danger {
+  background: #fee2e2;
+  color: #b91c1c;
   border: none;
-  color: var(--danger, #c0392b);
+  padding: 0.35rem 0.7rem;
+  border-radius: 6px;
+  font-weight: 600;
   cursor: pointer;
-  padding: 0.2rem 0.4rem;
-  font-size: 0.9rem;
+  transition: background 120ms ease;
 }
 
-.link-button:disabled {
+.rate-ranges-editor button.danger:hover:not(:disabled) {
+  background: #fecaca;
+}
+
+.rate-ranges-editor button.danger:disabled {
+  background: #f1f5f9;
   color: var(--muted);
+  cursor: not-allowed;
+}
+
+.rates-actions button.secondary {
+  background: #e2e8f0;
+  color: var(--text);
+  border: none;
+  padding: 0.55rem 0.9rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.rates-actions button.secondary:hover:not(:disabled) {
+  background: #cbd5e1;
+}
+
+.rates-actions button[type="submit"] {
+  margin-top: 0;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  padding: 0.55rem 1rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.rates-actions button[type="submit"]:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+
+.rates-actions button[type="submit"]:disabled {
+  opacity: 0.6;
   cursor: not-allowed;
 }
 

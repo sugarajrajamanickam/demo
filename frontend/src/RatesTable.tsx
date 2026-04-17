@@ -236,7 +236,7 @@ export default function RatesTable({ editable, onUnauthorized }: Props) {
                     <td>
                       <button
                         type="button"
-                        className="link-button"
+                        className="danger"
                         onClick={() => removeRow(idx)}
                         disabled={draft.length === 1}
                         title={
@@ -255,8 +255,8 @@ export default function RatesTable({ editable, onUnauthorized }: Props) {
           </div>
           {error && <p className="error">{error}</p>}
           <div className="rates-actions">
-            <button type="button" onClick={addRow}>
-              Add range
+            <button type="button" className="secondary" onClick={addRow}>
+              + Add range
             </button>
             <button type="submit" disabled={saving}>
               {saving ? "Saving…" : "Save rates"}
