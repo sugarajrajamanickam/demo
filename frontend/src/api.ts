@@ -75,19 +75,33 @@ async function handle<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }
 
-export interface AddResponse {
-  depth: number;
-  casing: number;
-  sum: number;
+export interface CostSlice {
+  start_ft: number;
+  end_ft: number;
+  feet: number;
+  rate_per_100ft: number;
+  cost: number;
 }
 
-export async function addValues(depth: number, casing: number): Promise<AddResponse> {
-  const res = await fetch("/api/add", {
+export interface CostBreakdown {
+  depth: number;
+  casing: number;
+  slices: CostSlice[];
+  amount: number;
+  casing_fee: number;
+  total: number;
+}
+
+export async function calculateCost(
+  depth: number,
+  casing: number
+): Promise<CostBreakdown> {
+  const res = await fetch("/api/cost", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeader() },
     body: JSON.stringify({ depth, casing }),
   });
-  return handle<AddResponse>(res);
+  return handle<CostBreakdown>(res);
 }
 
 export interface Me {
@@ -236,15 +250,24 @@ export async function deleteUser(id: number): Promise<void> {
   await handle<void>(res);
 }
 
-// --- Rate tiers -------------------------------------------------------------
+// --- Rate configuration + derived ranges -----------------------------------
 
-export interface RateRow {
-  depth_ft: number;
+export interface RateConfig {
+  base_rate: number;
+  step_mid: number;
+  step_deep: number;
+}
+
+export interface RateRange {
+  start_ft: number;
+  end_ft: number;
   rate: number;
 }
 
 export interface RatesResponse {
-  tiers: RateRow[];
+  config: RateConfig;
+  ranges: RateRange[];
+  display_max_ft: number;
 }
 
 export async function listRates(): Promise<RatesResponse> {
@@ -252,11 +275,11 @@ export async function listRates(): Promise<RatesResponse> {
   return handle<RatesResponse>(res);
 }
 
-export async function updateRates(tiers: RateRow[]): Promise<RatesResponse> {
+export async function updateRates(config: RateConfig): Promise<RatesResponse> {
   const res = await fetch("/api/admin/rates", {
     method: "PUT",
     headers: { "Content-Type": "application/json", ...authHeader() },
-    body: JSON.stringify({ tiers }),
+    body: JSON.stringify(config),
   });
   return handle<RatesResponse>(res);
 }

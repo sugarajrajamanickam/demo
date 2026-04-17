@@ -33,16 +33,36 @@ class User(SQLModel, table=True):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-class RateTier(SQLModel, table=True):
-    """Rate charged per 100 feet of depth.
+class RateConfig(SQLModel, table=True):
+    """Singleton configuration row driving the rate-per-100-ft ladder.
 
-    Keyed by ``depth_ft`` which is restricted (at the API layer) to the
-    fixed ladder 100, 200, 300, ..., 1000. Exactly 10 rows are seeded on
-    first boot so the UI always has something to render.
+    The ladder is *computed* from three numbers so the admin UI only has to
+    persist those three values (instead of N individual rows that could
+    drift out of sync):
+
+    * ``base_rate`` — flat rate per 100 ft for the 0–300 ft band.
+    * ``step_mid``  — increment applied to every 100 ft band in (300, 1000].
+    * ``step_deep`` — increment applied to every 100 ft band above 1000 ft.
+
+    With B = base_rate, m = step_mid, d = step_deep::
+
+        0–100, 100–200, 200–300     : B
+        300–400                      : B + m
+        400–500                      : B + 2m
+        ...
+        900–1000                     : B + 7m
+        1000–1100                    : B + 7m + d
+        1100–1200                    : B + 7m + 2d
+        ...
+
+    The table holds a single row, keyed by ``id=1``, so the callers can
+    treat it as configuration rather than a list.
     """
 
-    __tablename__ = "rate_tiers"
+    __tablename__ = "rate_config"
 
-    depth_ft: int = Field(primary_key=True, ge=100, le=1000)
-    rate: float = Field(default=0.0, ge=0)
+    id: int = Field(default=1, primary_key=True)
+    base_rate: float = Field(default=0.0, ge=0)
+    step_mid: float = Field(default=10.0, ge=0)
+    step_deep: float = Field(default=100.0, ge=0)
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

@@ -507,9 +507,11 @@ export default function Admin({ onUnauthorized, currentUsername }: Props) {
       </section>
 
       <section className="card admin-card">
-        <h2>Rates per 100 ft</h2>
+        <h2>Rate ladder</h2>
         <p className="muted">
-          Rates apply from 100 ft up to 1000 ft. Users see this table read-only
+          Three knobs drive the whole ladder: flat base rate up to 300 ft, a
+          per-100-ft increment in 300–1000 ft, and a steeper per-100-ft
+          increment above 1000 ft. Managers see the derived ranges read-only
           on the Calculate page.
         </p>
         <RatesTable editable={true} onUnauthorized={onUnauthorized} />

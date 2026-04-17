@@ -28,12 +28,15 @@ CREATE TABLE IF NOT EXISTS user (
 
 CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username ON users(username);
 
--- Rate per 100 ft of depth. The application seeds 10 rows on first boot
--- (depth_ft IN (100, 200, ..., 1000)) with rate=0.0 — admins can edit
--- the rates from the Admin page; managers see them read-only on the
--- Calculate page.
-CREATE TABLE IF NOT EXISTS rate_tiers (
-    depth_ft   INTEGER PRIMARY KEY,
-    rate       REAL    NOT NULL DEFAULT 0,
+-- Rate configuration singleton. The application derives the full
+-- per-100-ft ladder from three numbers: the flat base rate for the
+-- 0-300 ft band, the mid-band increment (applied to every 100 ft slice
+-- in (300, 1000] ft), and the deep-band increment (applied above
+-- 1000 ft). The singleton is keyed by id=1 and seeded on first boot.
+CREATE TABLE IF NOT EXISTS rate_config (
+    id         INTEGER PRIMARY KEY CHECK (id = 1),
+    base_rate  REAL    NOT NULL DEFAULT 0,
+    step_mid   REAL    NOT NULL DEFAULT 10,
+    step_deep  REAL    NOT NULL DEFAULT 100,
     updated_at TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );

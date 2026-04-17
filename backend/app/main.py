@@ -1,4 +1,4 @@
-"""FastAPI application: login + protected /api/add endpoint + SPA static serving."""
+"""FastAPI application: login + protected cost-calculation API + SPA static serving."""
 from __future__ import annotations
 
 import os
@@ -23,7 +23,7 @@ from .auth import (
 from .db import get_session, init_db
 from .models import User
 from .password import router as password_router
-from .rates import bootstrap_rate_tiers, router as rates_router
+from .rates import bootstrap_rate_config, router as rates_router
 
 app = FastAPI(title="SVLS Rig Service", version="2.1.0")
 
@@ -50,18 +50,7 @@ app.add_middleware(
 def _on_startup() -> None:
     init_db()
     bootstrap_admin()
-    bootstrap_rate_tiers()
-
-
-class AddRequest(BaseModel):
-    depth: float = Field(..., ge=0, description="Depth value (must be >= 0)")
-    casing: float = Field(..., ge=0, description="Casing value (must be >= 0)")
-
-
-class AddResponse(BaseModel):
-    depth: float
-    casing: float
-    sum: float
+    bootstrap_rate_config()
 
 
 class MeResponse(BaseModel):
@@ -96,18 +85,6 @@ def read_me(current_user: User = Depends(get_current_user)) -> MeResponse:
         mobile=current_user.mobile,
         role=current_user.role.value,
         full_name=current_user.full_name,
-    )
-
-
-@app.post("/api/add", response_model=AddResponse, tags=["compute"])
-def add_values(
-    payload: AddRequest,
-    _: User = Depends(get_current_user),
-) -> AddResponse:
-    return AddResponse(
-        depth=payload.depth,
-        casing=payload.casing,
-        sum=payload.depth + payload.casing,
     )
 
 
