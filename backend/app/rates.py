@@ -277,8 +277,14 @@ def update_rates(
     )
 
 
+# Hard cap on depth so an attacker can't request e.g. 1e15 ft and force
+# compute_cost into a billion-slice loop (one CostSlice allocated per
+# 100 ft). 100_000 ft (~19 miles) is deeper than any realistic well.
+MAX_DEPTH_FT: float = 100_000.0
+
+
 class CostRequest(BaseModel):
-    depth: float = Field(..., ge=0)
+    depth: float = Field(..., ge=0, le=MAX_DEPTH_FT)
     casing: float = Field(..., ge=0)
 
 
