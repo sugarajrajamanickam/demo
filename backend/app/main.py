@@ -95,11 +95,19 @@ if STATIC_DIR.is_dir():
     def spa_root() -> FileResponse:
         return FileResponse(STATIC_DIR / "index.html")
 
+    _STATIC_ROOT = STATIC_DIR.resolve()
+
     @app.get("/{full_path:path}", include_in_schema=False)
     def spa_catch_all(full_path: str) -> FileResponse:
         # Serve real files if they exist (e.g. favicon), otherwise fall back
         # to index.html so React Router can handle the route.
-        candidate = STATIC_DIR / full_path
+        # Resolve the candidate and ensure it stays inside STATIC_DIR to block
+        # path traversal (e.g. `../../etc/passwd`, percent-encoded variants).
+        candidate = (STATIC_DIR / full_path).resolve()
+        try:
+            candidate.relative_to(_STATIC_ROOT)
+        except ValueError:
+            return FileResponse(STATIC_DIR / "index.html")
         if candidate.is_file():
             return FileResponse(candidate)
         return FileResponse(STATIC_DIR / "index.html")
