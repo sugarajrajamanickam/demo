@@ -60,7 +60,8 @@ class UserCreate(BaseModel):
     mobile: str = Field(..., pattern=MOBILE_PATTERN)
     password: str = Field(..., min_length=1, max_length=128, pattern=PASSWORD_PATTERN)
     role: Role
-    full_name: Optional[str] = Field(default=None, max_length=128, pattern=FULL_NAME_PATTERN)
+    # Full name is mandatory at registration.
+    full_name: str = Field(..., min_length=1, max_length=128, pattern=FULL_NAME_PATTERN)
 
 
 class UserUpdate(BaseModel):

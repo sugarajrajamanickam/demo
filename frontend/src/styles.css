@@ -97,6 +97,17 @@ body,
   font-weight: 500;
 }
 
+/* Red asterisk for mandatory form fields. */
+.required-star {
+  color: var(--error);
+  margin-left: 0.2rem;
+  font-weight: 700;
+}
+
+.required-star[aria-hidden="true"] {
+  /* screen readers skip the glyph; `required` attr carries semantics. */
+}
+
 .card input {
   font-size: 1rem;
   padding: 0.65rem 0.85rem;

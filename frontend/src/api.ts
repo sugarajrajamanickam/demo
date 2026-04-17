@@ -116,7 +116,7 @@ export interface AdminUserCreate {
   mobile: string;
   password: string;
   role: Role;
-  full_name?: string | null;
+  full_name: string;
 }
 
 export type AdminUserUpdate = Partial<AdminUserCreate>;

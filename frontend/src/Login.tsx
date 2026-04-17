@@ -30,7 +30,7 @@ export default function Login({ onLogin }: Props) {
     <form className="card" onSubmit={handleSubmit}>
       <h2>Sign in</h2>
       <label>
-        Username
+        Username<span className="required-star" aria-hidden="true">*</span>
         <input
           type="text"
           value={username}
@@ -43,7 +43,7 @@ export default function Login({ onLogin }: Props) {
         />
       </label>
       <label>
-        Password
+        Password<span className="required-star" aria-hidden="true">*</span>
         <input
           type="password"
           value={password}

@@ -34,6 +34,12 @@ const emptyCreate: AdminUserCreate = {
   full_name: "",
 };
 
+const Star = () => (
+  <span className="required-star" aria-hidden="true">
+    *
+  </span>
+);
+
 export default function Admin({ onUnauthorized, currentUsername }: Props) {
   const [users, setUsers] = useState<AdminUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -147,7 +153,7 @@ export default function Admin({ onUnauthorized, currentUsername }: Props) {
         <h2>Add user</h2>
         <form className="admin-form" onSubmit={handleCreate}>
           <label>
-            Username
+            Username<Star />
             <input
               required
               value={form.username}
@@ -159,7 +165,7 @@ export default function Admin({ onUnauthorized, currentUsername }: Props) {
             />
           </label>
           <label>
-            Mobile number
+            Mobile number<Star />
             <input
               required
               value={form.mobile}
@@ -172,7 +178,7 @@ export default function Admin({ onUnauthorized, currentUsername }: Props) {
             />
           </label>
           <label>
-            Password
+            Password<Star />
             <input
               required
               type="password"
