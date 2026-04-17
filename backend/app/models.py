@@ -33,36 +33,35 @@ class User(SQLModel, table=True):
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
-class RateConfig(SQLModel, table=True):
-    """Singleton configuration row driving the rate-per-100-ft ladder.
+class RateRangeMode(str, Enum):
+    """How a range's ``rate`` value is applied to each 100 ft slice.
 
-    The ladder is *computed* from three numbers so the admin UI only has to
-    persist those three values (instead of N individual rows that could
-    drift out of sync):
-
-    * ``base_rate`` — flat rate per 100 ft for the 0–300 ft band.
-    * ``step_mid``  — increment applied to every 100 ft band in (300, 1000].
-    * ``step_deep`` — increment applied to every 100 ft band above 1000 ft.
-
-    With B = base_rate, m = step_mid, d = step_deep::
-
-        0–100, 100–200, 200–300     : B
-        300–400                      : B + m
-        400–500                      : B + 2m
-        ...
-        900–1000                     : B + 7m
-        1000–1100                    : B + 7m + d
-        1100–1200                    : B + 7m + 2d
-        ...
-
-    The table holds a single row, keyed by ``id=1``, so the callers can
-    treat it as configuration rather than a list.
+    * ``FIXED``    — every 100 ft slice in the range charges ``rate``.
+    * ``STEP_UP``  — each 100 ft slice charges the *previous* slice's rate
+      plus ``rate``. (For the very first range with no predecessor, the
+      implicit previous rate is ``0``.)
     """
 
-    __tablename__ = "rate_config"
+    FIXED = "fixed"
+    STEP_UP = "step_up"
 
-    id: int = Field(default=1, primary_key=True)
-    base_rate: float = Field(default=0.0, ge=0)
-    step_mid: float = Field(default=10.0, ge=0)
-    step_deep: float = Field(default=100.0, ge=0)
+
+class RateRange(SQLModel, table=True):
+    """A single admin-defined pricing range of the rate ladder.
+
+    Ranges are contiguous, non-overlapping, in ascending ``start_ft``, and
+    the first range must start at ``0``. ``end_ft > start_ft``, both are
+    non-negative multiples of 100 so the per-100-ft calculator stays
+    integer-clean. ``compute_cost`` walks the ranges in order and extends
+    the rate accordingly (see :class:`RateRangeMode`).
+    """
+
+    __tablename__ = "rate_ranges"
+
+    id: Optional[int] = Field(default=None, primary_key=True)
+    start_ft: int = Field(ge=0)
+    end_ft: int = Field(gt=0)
+    mode: RateRangeMode = Field(default=RateRangeMode.FIXED)
+    rate: float = Field(ge=0)
+    sort_index: int = Field(default=0)  # preserves admin-provided order
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

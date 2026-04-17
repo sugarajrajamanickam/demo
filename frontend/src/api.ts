@@ -250,24 +250,28 @@ export async function deleteUser(id: number): Promise<void> {
   await handle<void>(res);
 }
 
-// --- Rate configuration + derived ranges -----------------------------------
+// --- Admin-defined rate ranges ---------------------------------------------
 
-export interface RateConfig {
-  base_rate: number;
-  step_mid: number;
-  step_deep: number;
-}
+export type RateRangeMode = "fixed" | "step_up";
 
 export interface RateRange {
   start_ft: number;
   end_ft: number;
+  mode: RateRangeMode;
   rate: number;
 }
 
+export interface DerivedSlice {
+  start_ft: number;
+  end_ft: number;
+  rate: number;
+  mode: RateRangeMode;
+}
+
 export interface RatesResponse {
-  config: RateConfig;
   ranges: RateRange[];
-  display_max_ft: number;
+  derived: DerivedSlice[];
+  max_depth_ft: number;
 }
 
 export async function listRates(): Promise<RatesResponse> {
@@ -275,11 +279,11 @@ export async function listRates(): Promise<RatesResponse> {
   return handle<RatesResponse>(res);
 }
 
-export async function updateRates(config: RateConfig): Promise<RatesResponse> {
+export async function updateRates(ranges: RateRange[]): Promise<RatesResponse> {
   const res = await fetch("/api/admin/rates", {
     method: "PUT",
     headers: { "Content-Type": "application/json", ...authHeader() },
-    body: JSON.stringify(config),
+    body: JSON.stringify({ ranges }),
   });
   return handle<RatesResponse>(res);
 }

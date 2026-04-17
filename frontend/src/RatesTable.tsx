@@ -1,34 +1,41 @@
 import { FormEvent, useEffect, useState } from "react";
-import { RateConfig, RateRange, listRates, updateRates } from "./api";
+import {
+  DerivedSlice,
+  RateRange,
+  RateRangeMode,
+  listRates,
+  updateRates,
+} from "./api";
 
 interface Props {
-  /** When true the admin can edit + save the config; otherwise read-only. */
+  /** Admin editor + derived ranges if true; read-only derived ranges only otherwise. */
   editable: boolean;
   onUnauthorized?: () => void;
 }
 
-type Draft = { base_rate: string; step_mid: string; step_deep: string };
+type DraftRow = {
+  start_ft: string;
+  end_ft: string;
+  mode: RateRangeMode;
+  rate: string;
+};
 
-const formatRange = (r: RateRange): string =>
-  `${r.start_ft} – ${r.end_ft} ft`;
+const toDraft = (r: RateRange): DraftRow => ({
+  start_ft: String(r.start_ft),
+  end_ft: String(r.end_ft),
+  mode: r.mode,
+  rate: String(r.rate),
+});
 
-/**
- * Rate ladder shared by Admin (config editor + derived ranges) and
- * Calculator (read-only derived ranges).
- *
- * The server stores just three numbers (base_rate, step_mid, step_deep);
- * the full per-100-ft ladder is derived from those on every read. Keeping
- * derivation on the server means the admin UI can't accidentally produce
- * a ladder that disagrees with the calculator.
- */
+const modeLabel = (m: RateRangeMode): string =>
+  m === "fixed" ? "Fixed rate" : "Step up (+rate / 100 ft)";
+
+const formatSlice = (s: DerivedSlice): string =>
+  `${s.start_ft} – ${s.end_ft} ft`;
+
 export default function RatesTable({ editable, onUnauthorized }: Props) {
-  const [config, setConfig] = useState<RateConfig | null>(null);
-  const [ranges, setRanges] = useState<RateRange[]>([]);
-  const [draft, setDraft] = useState<Draft>({
-    base_rate: "",
-    step_mid: "",
-    step_deep: "",
-  });
+  const [draft, setDraft] = useState<DraftRow[]>([]);
+  const [derived, setDerived] = useState<DerivedSlice[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -39,13 +46,8 @@ export default function RatesTable({ editable, onUnauthorized }: Props) {
     setError(null);
     try {
       const data = await listRates();
-      setConfig(data.config);
-      setRanges(data.ranges);
-      setDraft({
-        base_rate: String(data.config.base_rate),
-        step_mid: String(data.config.step_mid),
-        step_deep: String(data.config.step_deep),
-      });
+      setDraft(data.ranges.map(toDraft));
+      setDerived(data.derived);
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Failed to load rates";
       setError(msg);
@@ -60,30 +62,93 @@ export default function RatesTable({ editable, onUnauthorized }: Props) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const parseField = (label: string, raw: string): number | null => {
-    const num = Number(raw);
-    if (raw.trim() === "" || !Number.isFinite(num) || num < 0) {
-      setError(`${label} must be a non-negative number`);
-      return null;
+  const updateRow = (idx: number, patch: Partial<DraftRow>) => {
+    setDraft((prev) =>
+      prev.map((row, i) => (i === idx ? { ...row, ...patch } : row))
+    );
+  };
+
+  const addRow = () => {
+    setDraft((prev) => {
+      const lastEnd = prev.length > 0 ? Number(prev[prev.length - 1].end_ft) : 0;
+      const nextStart = Number.isFinite(lastEnd) ? lastEnd : 0;
+      return [
+        ...prev,
+        {
+          start_ft: String(nextStart),
+          end_ft: String(nextStart + 100),
+          mode: "fixed",
+          rate: "0",
+        },
+      ];
+    });
+  };
+
+  const removeRow = (idx: number) => {
+    setDraft((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const parseRanges = (): RateRange[] | null => {
+    const parsed: RateRange[] = [];
+    for (let i = 0; i < draft.length; i++) {
+      const row = draft[i];
+      const start = Number(row.start_ft);
+      const end = Number(row.end_ft);
+      const rate = Number(row.rate);
+      if (
+        !Number.isFinite(start) ||
+        start < 0 ||
+        start % 100 !== 0 ||
+        !Number.isFinite(end) ||
+        end <= start ||
+        end % 100 !== 0
+      ) {
+        setError(
+          `Range ${i + 1}: start/end must be non-negative multiples of 100 and end > start`
+        );
+        return null;
+      }
+      if (!Number.isFinite(rate) || rate < 0) {
+        setError(`Range ${i + 1}: rate must be a non-negative number`);
+        return null;
+      }
+      parsed.push({
+        start_ft: start,
+        end_ft: end,
+        mode: row.mode,
+        rate,
+      });
     }
-    return num;
+    return parsed;
   };
 
   const handleSave = async (e: FormEvent) => {
     e.preventDefault();
     setError(null);
-    const base_rate = parseField("Base rate", draft.base_rate);
-    if (base_rate === null) return;
-    const step_mid = parseField("Mid-band increment", draft.step_mid);
-    if (step_mid === null) return;
-    const step_deep = parseField("Deep-band increment", draft.step_deep);
-    if (step_deep === null) return;
+    const parsed = parseRanges();
+    if (!parsed) return;
+    if (parsed.length === 0) {
+      setError("At least one range is required");
+      return;
+    }
+    if (parsed[0].start_ft !== 0) {
+      setError("First range must start at 0 ft");
+      return;
+    }
+    for (let i = 1; i < parsed.length; i++) {
+      if (parsed[i].start_ft !== parsed[i - 1].end_ft) {
+        setError(
+          `Range ${i + 1} must start where range ${i} ends (${parsed[i - 1].end_ft} ft)`
+        );
+        return;
+      }
+    }
 
     setSaving(true);
     try {
-      const data = await updateRates({ base_rate, step_mid, step_deep });
-      setConfig(data.config);
-      setRanges(data.ranges);
+      const data = await updateRates(parsed);
+      setDraft(data.ranges.map(toDraft));
+      setDerived(data.derived);
       setSavedAt(new Date());
     } catch (err) {
       setError(err instanceof Error ? err.message : "Save failed");
@@ -93,60 +158,106 @@ export default function RatesTable({ editable, onUnauthorized }: Props) {
   };
 
   if (loading) return <p>Loading rates…</p>;
-  if (!config) return <p className="error">{error ?? "Rates unavailable"}</p>;
+  if (!editable && draft.length === 0) {
+    return <p className="muted">No rate ranges configured yet.</p>;
+  }
 
   return (
     <div className="rates">
       {editable ? (
-        <form className="rate-config-form" onSubmit={handleSave}>
-          <label>
-            <span className="field-label-text">
-              Base rate (0–300 ft, per 100 ft)
-              <span className="required-star" aria-hidden="true">*</span>
-            </span>
-            <input
-              type="number"
-              step="any"
-              min="0"
-              value={draft.base_rate}
-              onChange={(e) =>
-                setDraft({ ...draft, base_rate: e.target.value })
-              }
-              required
-            />
-          </label>
-          <label>
-            <span className="field-label-text">
-              Mid-band increment (300–1000 ft, per 100 ft)
-              <span className="required-star" aria-hidden="true">*</span>
-            </span>
-            <input
-              type="number"
-              step="any"
-              min="0"
-              value={draft.step_mid}
-              onChange={(e) => setDraft({ ...draft, step_mid: e.target.value })}
-              required
-            />
-          </label>
-          <label>
-            <span className="field-label-text">
-              Deep-band increment (above 1000 ft, per 100 ft)
-              <span className="required-star" aria-hidden="true">*</span>
-            </span>
-            <input
-              type="number"
-              step="any"
-              min="0"
-              value={draft.step_deep}
-              onChange={(e) =>
-                setDraft({ ...draft, step_deep: e.target.value })
-              }
-              required
-            />
-          </label>
+        <form className="rate-ranges-form" onSubmit={handleSave}>
+          <div className="table-wrap rates-table-wrap">
+            <table className="rates-table rate-ranges-editor">
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>Start (ft)</th>
+                  <th>End (ft)</th>
+                  <th>Mode</th>
+                  <th>Rate</th>
+                  <th aria-label="Actions"></th>
+                </tr>
+              </thead>
+              <tbody>
+                {draft.map((row, idx) => (
+                  <tr key={idx}>
+                    <td>{idx + 1}</td>
+                    <td>
+                      <input
+                        type="number"
+                        step="100"
+                        min="0"
+                        value={row.start_ft}
+                        onChange={(e) =>
+                          updateRow(idx, { start_ft: e.target.value })
+                        }
+                        required
+                        aria-label={`Range ${idx + 1} start`}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        step="100"
+                        min="0"
+                        value={row.end_ft}
+                        onChange={(e) =>
+                          updateRow(idx, { end_ft: e.target.value })
+                        }
+                        required
+                        aria-label={`Range ${idx + 1} end`}
+                      />
+                    </td>
+                    <td>
+                      <select
+                        value={row.mode}
+                        onChange={(e) =>
+                          updateRow(idx, {
+                            mode: e.target.value as RateRangeMode,
+                          })
+                        }
+                        aria-label={`Range ${idx + 1} mode`}
+                      >
+                        <option value="fixed">Fixed rate</option>
+                        <option value="step_up">Step up (+rate / 100 ft)</option>
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        value={row.rate}
+                        onChange={(e) => updateRow(idx, { rate: e.target.value })}
+                        required
+                        aria-label={`Range ${idx + 1} rate`}
+                      />
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        className="link-button"
+                        onClick={() => removeRow(idx)}
+                        disabled={draft.length === 1}
+                        title={
+                          draft.length === 1
+                            ? "At least one range is required"
+                            : "Remove range"
+                        }
+                      >
+                        Remove
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
           {error && <p className="error">{error}</p>}
           <div className="rates-actions">
+            <button type="button" onClick={addRow}>
+              Add range
+            </button>
             <button type="submit" disabled={saving}>
               {saving ? "Saving…" : "Save rates"}
             </button>
@@ -156,29 +267,38 @@ export default function RatesTable({ editable, onUnauthorized }: Props) {
               </span>
             )}
           </div>
+          <p className="muted rates-hint">
+            Ranges must be contiguous and start at 0 ft. For <em>step up</em>{" "}
+            rows, rate adds to the previous 100-ft slice (starting from 0 if
+            it's the first range).
+          </p>
         </form>
-      ) : (
-        <p className="muted rates-summary">
-          Base rate: <strong>{config.base_rate}</strong> · Mid-band step:{" "}
-          <strong>{config.step_mid}</strong> · Deep-band step:{" "}
-          <strong>{config.step_deep}</strong>
-        </p>
-      )}
+      ) : null}
       <div className="table-wrap rates-table-wrap">
         <table className="rates-table">
           <thead>
             <tr>
               <th>Range</th>
+              <th>Mode</th>
               <th>Rate (per 100 ft)</th>
             </tr>
           </thead>
           <tbody>
-            {ranges.map((r) => (
-              <tr key={r.start_ft}>
-                <td>{formatRange(r)}</td>
-                <td>{r.rate}</td>
+            {derived.length === 0 ? (
+              <tr>
+                <td colSpan={3} className="muted">
+                  No derived slices — admin must add at least one range.
+                </td>
               </tr>
-            ))}
+            ) : (
+              derived.map((s) => (
+                <tr key={s.start_ft}>
+                  <td>{formatSlice(s)}</td>
+                  <td>{modeLabel(s.mode)}</td>
+                  <td>{s.rate}</td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>

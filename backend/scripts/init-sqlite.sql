@@ -28,15 +28,20 @@ CREATE TABLE IF NOT EXISTS user (
 
 CREATE UNIQUE INDEX IF NOT EXISTS ix_users_username ON users(username);
 
--- Rate configuration singleton. The application derives the full
--- per-100-ft ladder from three numbers: the flat base rate for the
--- 0-300 ft band, the mid-band increment (applied to every 100 ft slice
--- in (300, 1000] ft), and the deep-band increment (applied above
--- 1000 ft). The singleton is keyed by id=1 and seeded on first boot.
-CREATE TABLE IF NOT EXISTS rate_config (
-    id         INTEGER PRIMARY KEY CHECK (id = 1),
-    base_rate  REAL    NOT NULL DEFAULT 0,
-    step_mid   REAL    NOT NULL DEFAULT 10,
-    step_deep  REAL    NOT NULL DEFAULT 100,
+-- Admin-defined rate ranges. Admin maintains a contiguous chain of
+-- pricing ranges starting at 0 ft: each range has a mode ("fixed" —
+-- flat rate for every 100 ft in the range; "step_up" — rate increases
+-- by `rate` for each 100 ft slice, continuing from the previous slice's
+-- rate). The application derives the per-100-ft ladder from these rows
+-- and uses it to compute depth-based cost at request time. Bootstrap
+-- seeds the historical three-band ladder on first boot.
+CREATE TABLE IF NOT EXISTS rate_ranges (
+    id         INTEGER PRIMARY KEY AUTOINCREMENT,
+    start_ft   INTEGER NOT NULL CHECK (start_ft >= 0 AND start_ft % 100 = 0),
+    end_ft     INTEGER NOT NULL CHECK (end_ft   >  0 AND end_ft   % 100 = 0),
+    mode       TEXT    NOT NULL CHECK (mode IN ('fixed', 'step_up')),
+    rate       REAL    NOT NULL CHECK (rate >= 0),
+    sort_index INTEGER NOT NULL DEFAULT 0,
     updated_at TEXT    NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE INDEX IF NOT EXISTS ix_rate_ranges_sort ON rate_ranges(sort_index, start_ft);

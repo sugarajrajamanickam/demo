@@ -671,3 +671,38 @@ body,
   font-size: 1.05rem;
   color: inherit;
 }
+
+.rate-ranges-form .rate-ranges-editor input,
+.rate-ranges-form .rate-ranges-editor select {
+  width: 100%;
+  min-width: 0;
+}
+
+.rate-ranges-form .rate-ranges-editor th,
+.rate-ranges-form .rate-ranges-editor td {
+  padding: 0.25rem 0.4rem;
+}
+
+.rate-ranges-form .rate-ranges-editor td:first-child {
+  text-align: center;
+  color: var(--muted);
+}
+
+.link-button {
+  background: none;
+  border: none;
+  color: var(--danger, #c0392b);
+  cursor: pointer;
+  padding: 0.2rem 0.4rem;
+  font-size: 0.9rem;
+}
+
+.link-button:disabled {
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.rates-hint {
+  font-size: 0.85rem;
+  margin: 0.4rem 0 0 0;
+}
