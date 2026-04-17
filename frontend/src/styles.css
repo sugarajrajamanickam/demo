@@ -97,6 +97,30 @@ body,
   font-weight: 500;
 }
 
+/* Red asterisk for mandatory form fields. Stays inline next to the
+   label text thanks to `.field-label-text` wrapping both. */
+.required-star {
+  color: var(--error);
+  margin-left: 0.15rem;
+  font-weight: 700;
+  display: inline;
+  white-space: nowrap;
+}
+
+/* Groups the label text + asterisk into a single flex item so the
+   star renders inline with the label (not on its own row when the
+   parent label is `display: flex; flex-direction: column`). */
+.field-label-text {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0;
+  white-space: nowrap;
+}
+
+.required-star[aria-hidden="true"] {
+  /* screen readers skip the glyph; `required` attr carries semantics. */
+}
+
 .card input {
   font-size: 1rem;
   padding: 0.65rem 0.85rem;
@@ -186,4 +210,558 @@ body,
   .card {
     max-width: none;
   }
+}
+
+/* ----- Header nav / session ---------------------------------------------- */
+.header-left {
+  display: flex;
+  align-items: center;
+  gap: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.header-nav {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.nav-btn {
+  background: transparent;
+  color: rgba(255, 255, 255, 0.75);
+  border: 1px solid transparent;
+  padding: 0.35rem 0.8rem;
+  border-radius: 8px;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.nav-btn:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.nav-btn.active {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.25);
+}
+
+.session-info {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+/* ----- Role pills -------------------------------------------------------- */
+.role-pill {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  text-transform: lowercase;
+  letter-spacing: 0.02em;
+}
+
+.role-pill.role-admin {
+  background: rgba(37, 99, 235, 0.15);
+  color: #1d4ed8;
+}
+
+.role-pill.role-manager {
+  background: rgba(100, 116, 139, 0.2);
+  color: #334155;
+}
+
+.app-header .role-pill.role-admin {
+  background: rgba(255, 255, 255, 0.2);
+  color: #fff;
+}
+
+.app-header .role-pill.role-manager {
+  background: rgba(255, 255, 255, 0.12);
+  color: #e2e8f0;
+}
+
+/* ----- Admin page -------------------------------------------------------- */
+.admin {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  width: 100%;
+  max-width: 960px;
+}
+
+.admin-card {
+  max-width: none;
+}
+
+.admin-form {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 0.75rem 1rem;
+  align-items: end;
+}
+
+.admin-form button[type="submit"] {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  padding: 0.7rem 1rem;
+  border-radius: 8px;
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  height: fit-content;
+}
+
+.admin-form button[type="submit"]:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+
+.admin-form select,
+.admin-form input {
+  font-size: 0.95rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  color: var(--text);
+  background: #fff;
+  width: 100%;
+}
+
+.table-wrap {
+  overflow-x: auto;
+}
+
+/* Vertical scroll for the paginated users table so large pages don't
+   stretch the page. A sticky header keeps column labels visible. */
+.table-scroll {
+  max-height: 460px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.table-scroll thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+/* Header row + filter/pagination controls on the admin Users card. */
+.admin-list-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.admin-list-header h2 {
+  margin: 0;
+}
+
+.admin-list-meta {
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.admin-list-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-wrap: wrap;
+  margin: 0.4rem 0 0.8rem;
+}
+
+.admin-list-controls .filter-input {
+  flex: 1 1 220px;
+  min-width: 180px;
+  font-size: 0.9rem;
+  padding: 0.45rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.admin-list-controls select {
+  font-size: 0.9rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: #fff;
+}
+
+.admin-list-controls .page-size {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--muted);
+  font-size: 0.85rem;
+}
+
+.admin-list-controls button.secondary {
+  background: #e2e8f0;
+  color: var(--text);
+  border: none;
+  padding: 0.4rem 0.75rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.pagination {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.pagination button.secondary {
+  background: #e2e8f0;
+  color: var(--text);
+  border: none;
+  padding: 0.4rem 0.8rem;
+  border-radius: 8px;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.pagination button.secondary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.admin-list table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.92rem;
+}
+
+.admin-list th,
+.admin-list td {
+  text-align: left;
+  padding: 0.55rem 0.65rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.admin-list th {
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  background: #f8fafc;
+}
+
+.admin-list input,
+.admin-list select {
+  font-size: 0.9rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: #fff;
+  width: 100%;
+  min-width: 120px;
+}
+
+.row-actions {
+  display: flex;
+  gap: 0.4rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.row-actions button {
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  padding: 0.35rem 0.7rem;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.row-actions button:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+
+.row-actions button.secondary {
+  background: #e2e8f0;
+  color: var(--text);
+}
+
+.row-actions button.danger {
+  background: var(--error);
+}
+
+.row-actions button.danger:hover:not(:disabled) {
+  background: #b91c1c;
+}
+
+.row-actions button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.self-badge {
+  margin-left: 0.4rem;
+  font-size: 0.7rem;
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0.05rem 0.4rem;
+}
+
+.linklike {
+  background: transparent;
+  color: var(--primary);
+  padding: 0.2rem 0;
+  border: none;
+  text-decoration: underline;
+  cursor: pointer;
+  font-size: 0.9rem;
+  align-self: flex-start;
+}
+
+.linklike:hover {
+  color: var(--primary-hover);
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  z-index: 50;
+}
+
+.modal {
+  max-width: 420px;
+  width: 100%;
+  max-height: 90vh;
+  overflow-y: auto;
+  margin: 0;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.modal-header h3 {
+  margin: 0;
+}
+
+.success {
+  color: #047857;
+  background: #d1fae5;
+  border: 1px solid #6ee7b7;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+}
+
+.muted {
+  color: var(--muted);
+}
+
+.calculator {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.rates-table-wrap {
+  max-height: 360px;
+  overflow-y: auto;
+}
+
+.rates-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.rates-table th,
+.rates-table td {
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid var(--border, #e4e4e7);
+  text-align: left;
+}
+
+.rates-table th {
+  position: sticky;
+  top: 0;
+  background: var(--panel-bg, #fff);
+  z-index: 1;
+}
+
+.rates-table input[type="number"] {
+  width: 100%;
+  max-width: 160px;
+}
+
+.rates-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
+}
+
+.rate-config-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-bottom: 0.8rem;
+}
+
+.rates-summary {
+  margin: 0 0 0.6rem 0;
+}
+
+.cost-breakdown th,
+.cost-breakdown td {
+  white-space: nowrap;
+}
+
+.cost-totals {
+  margin: 0.8rem 0 0 0;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.2rem 1rem;
+}
+
+.cost-totals > div {
+  display: contents;
+}
+
+.cost-totals dt {
+  margin: 0;
+  color: var(--muted);
+}
+
+.cost-totals dd {
+  margin: 0;
+  text-align: right;
+}
+
+.cost-totals .sum dt,
+.cost-totals .sum dd {
+  border-top: 1px solid var(--border, #e4e4e7);
+  padding-top: 0.4rem;
+  margin-top: 0.3rem;
+  font-size: 1.05rem;
+  color: inherit;
+}
+
+.rate-ranges-form .rate-ranges-editor input,
+.rate-ranges-form .rate-ranges-editor select {
+  width: 100%;
+  min-width: 0;
+}
+
+.rate-ranges-form .rate-ranges-editor th,
+.rate-ranges-form .rate-ranges-editor td {
+  padding: 0.25rem 0.4rem;
+}
+
+.rate-ranges-form .rate-ranges-editor td:first-child {
+  text-align: center;
+  color: var(--muted);
+}
+
+.rate-ranges-editor button.danger {
+  background: #fee2e2;
+  color: #b91c1c;
+  border: none;
+  padding: 0.35rem 0.7rem;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.rate-ranges-editor button.danger:hover:not(:disabled) {
+  background: #fecaca;
+}
+
+.rate-ranges-editor button.danger:disabled {
+  background: #f1f5f9;
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.rates-actions button.secondary {
+  background: #e2e8f0;
+  color: var(--text);
+  border: none;
+  padding: 0.55rem 0.9rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.rates-actions button.secondary:hover:not(:disabled) {
+  background: #cbd5e1;
+}
+
+.rates-actions button[type="submit"] {
+  margin-top: 0;
+  background: var(--primary);
+  color: #fff;
+  border: none;
+  padding: 0.55rem 1rem;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 120ms ease;
+}
+
+.rates-actions button[type="submit"]:hover:not(:disabled) {
+  background: var(--primary-hover);
+}
+
+.rates-actions button[type="submit"]:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.rates-hint {
+  font-size: 0.85rem;
+  margin: 0.4rem 0 0 0;
+}
+
+.rate-input-cell {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.rate-input-cell input {
+  flex: 1;
+  min-width: 0;
+}
+
+.rate-unit {
+  font-size: 0.8rem;
+  white-space: nowrap;
 }

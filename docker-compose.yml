@@ -7,7 +7,14 @@ services:
     environment:
       APP_USERNAME: ${APP_USERNAME:-admin}
       APP_PASSWORD: ${APP_PASSWORD:-admin}
+      APP_ADMIN_MOBILE: ${APP_ADMIN_MOBILE:-0000000000}
       APP_SECRET_KEY: ${APP_SECRET_KEY:-dev-secret-change-me}
       APP_TOKEN_EXPIRE_MINUTES: ${APP_TOKEN_EXPIRE_MINUTES:-60}
       APP_CORS_ORIGINS: ${APP_CORS_ORIGINS:-*}
+      APP_DATABASE_PATH: ${APP_DATABASE_PATH:-/app/data/app.db}
+    volumes:
+      - app-data:/app/data
     restart: unless-stopped
+
+volumes:
+  app-data:

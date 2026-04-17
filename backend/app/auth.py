@@ -1,8 +1,9 @@
-"""Simple JWT auth for the demo app.
+"""JWT auth for the demo app with DB-backed users and role-based access.
 
-A single user is configured via the APP_USERNAME and APP_PASSWORD environment
-variables (defaults: admin / admin). In production you MUST override
-APP_SECRET_KEY and the credentials.
+A bootstrap admin user is seeded on first startup using APP_USERNAME /
+APP_PASSWORD / APP_ADMIN_MOBILE env vars (defaults: admin / admin / 0000000000).
+All further users are managed through the admin API. In production you MUST
+override APP_SECRET_KEY and the bootstrap credentials.
 """
 from __future__ import annotations
 
@@ -16,11 +17,17 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
 from jose import JWTError, jwt
 from pydantic import BaseModel
+from sqlmodel import Session, select
+
+from .db import engine, get_session
+from .models import Role, User
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_SECRET_KEY = "dev-secret-change-me"
 SECRET_KEY = os.getenv("APP_SECRET_KEY", _DEFAULT_SECRET_KEY)
 if SECRET_KEY == _DEFAULT_SECRET_KEY:
-    logging.getLogger(__name__).warning(
+    logger.warning(
         "APP_SECRET_KEY is unset; using the built-in development secret. "
         "Set APP_SECRET_KEY to a strong random value before deploying — "
         "anyone who knows the default secret can forge valid JWTs."
@@ -28,10 +35,26 @@ if SECRET_KEY == _DEFAULT_SECRET_KEY:
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = int(os.getenv("APP_TOKEN_EXPIRE_MINUTES", "60"))
 
-APP_USERNAME = os.getenv("APP_USERNAME", "admin")
-APP_PASSWORD = os.getenv("APP_PASSWORD", "admin")
+BOOTSTRAP_USERNAME = os.getenv("APP_USERNAME", "admin")
+BOOTSTRAP_PASSWORD = os.getenv("APP_PASSWORD", "admin")
+BOOTSTRAP_MOBILE = os.getenv("APP_ADMIN_MOBILE", "0000000000")
+BOOTSTRAP_SECURITY_QUESTION = os.getenv(
+    "APP_ADMIN_SECURITY_QUESTION", "What is your favorite color?"
+)
+BOOTSTRAP_SECURITY_ANSWER = os.getenv("APP_ADMIN_SECURITY_ANSWER", "admin")
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="token")
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    role: Role
+
+
+class TokenData(BaseModel):
+    username: Optional[str] = None
+    role: Optional[Role] = None
 
 
 def _truncate_for_bcrypt(password: str) -> bytes:
@@ -39,43 +62,107 @@ def _truncate_for_bcrypt(password: str) -> bytes:
     return password.encode("utf-8")[:72]
 
 
-_PASSWORD_HASH = bcrypt.hashpw(_truncate_for_bcrypt(APP_PASSWORD), bcrypt.gensalt())
+def hash_password(password: str) -> str:
+    return bcrypt.hashpw(_truncate_for_bcrypt(password), bcrypt.gensalt()).decode("utf-8")
 
 
-class Token(BaseModel):
-    access_token: str
-    token_type: str = "bearer"
-
-
-class TokenData(BaseModel):
-    username: Optional[str] = None
-
-
-def verify_credentials(username: str, password: str) -> bool:
-    if username != APP_USERNAME:
+def verify_password(password: str, password_hash: str) -> bool:
+    try:
+        return bcrypt.checkpw(_truncate_for_bcrypt(password), password_hash.encode("utf-8"))
+    except ValueError:
         return False
-    return bcrypt.checkpw(_truncate_for_bcrypt(password), _PASSWORD_HASH)
 
 
-def create_access_token(subject: str, expires_delta: Optional[timedelta] = None) -> str:
+def normalize_security_answer(answer: str) -> str:
+    # Case-insensitive + whitespace-trim so "Blue " and "blue" both work.
+    return answer.strip().casefold()
+
+
+def hash_security_answer(answer: str) -> str:
+    return hash_password(normalize_security_answer(answer))
+
+
+def verify_security_answer(answer: str, answer_hash: str) -> bool:
+    return verify_password(normalize_security_answer(answer), answer_hash)
+
+
+def authenticate_user(session: Session, username: str, password: str) -> Optional[User]:
+    user = session.exec(select(User).where(User.username == username)).first()
+    if user is None:
+        return None
+    if not verify_password(password, user.password_hash):
+        return None
+    return user
+
+
+def create_access_token(user: User, expires_delta: Optional[timedelta] = None) -> str:
     expire = datetime.now(timezone.utc) + (
         expires_delta or timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     )
-    to_encode = {"sub": subject, "exp": expire}
+    assert user.id is not None, "Cannot issue a token for an unsaved user"
+    # `sub` is the immutable user id so renames don't invalidate live sessions.
+    to_encode = {"sub": str(user.id), "role": user.role.value, "exp": expire}
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 
-def get_current_user(token: str = Depends(oauth2_scheme)) -> str:
-    credentials_exception = HTTPException(
+def _credentials_exception() -> HTTPException:
+    return HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
         headers={"WWW-Authenticate": "Bearer"},
     )
+
+
+def get_current_user(
+    token: str = Depends(oauth2_scheme),
+    session: Session = Depends(get_session),
+) -> User:
     try:
         payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username: Optional[str] = payload.get("sub")
-        if username is None:
-            raise credentials_exception
+        sub: Optional[str] = payload.get("sub")
+        if sub is None:
+            raise _credentials_exception()
+        try:
+            user_id = int(sub)
+        except (TypeError, ValueError) as exc:
+            raise _credentials_exception() from exc
     except JWTError as exc:
-        raise credentials_exception from exc
-    return username
+        raise _credentials_exception() from exc
+
+    user = session.get(User, user_id)
+    if user is None:
+        # Token is valid but the user has been deleted — treat as unauthenticated.
+        raise _credentials_exception()
+    return user
+
+
+def require_admin(current_user: User = Depends(get_current_user)) -> User:
+    if current_user.role is not Role.ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin role required",
+        )
+    return current_user
+
+
+def bootstrap_admin() -> None:
+    """Ensure at least one admin exists so operators can log in after a fresh deploy."""
+    with Session(engine) as session:
+        existing = session.exec(select(User)).first()
+        if existing is not None:
+            return
+        admin = User(
+            username=BOOTSTRAP_USERNAME,
+            mobile=BOOTSTRAP_MOBILE,
+            password_hash=hash_password(BOOTSTRAP_PASSWORD),
+            role=Role.ADMIN,
+            full_name="Bootstrap Admin",
+            security_question=BOOTSTRAP_SECURITY_QUESTION,
+            security_answer_hash=hash_security_answer(BOOTSTRAP_SECURITY_ANSWER),
+        )
+        session.add(admin)
+        session.commit()
+        logger.info(
+            "Seeded bootstrap admin user username=%s — change the password via the admin API.",
+            BOOTSTRAP_USERNAME,
+        )

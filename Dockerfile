@@ -26,7 +26,9 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/app ./app
 COPY --from=frontend /frontend/dist ./static
 
-RUN useradd --create-home --shell /bin/bash appuser && chown -R appuser:appuser /app
+RUN mkdir -p /app/data \
+    && useradd --create-home --shell /bin/bash appuser \
+    && chown -R appuser:appuser /app
 USER appuser
 
 EXPOSE 8000
