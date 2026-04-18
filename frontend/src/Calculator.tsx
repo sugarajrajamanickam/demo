@@ -90,9 +90,9 @@ export default function Calculator({ onUnauthorized }: Props) {
               <table className="rates-table cost-breakdown">
                 <thead>
                   <tr>
-                    <th>Slice</th>
+                    <th>Range</th>
                     <th>Feet</th>
-                    <th>Rate (per 100 ft)</th>
+                    <th>Rate (per ft)</th>
                     <th>Cost</th>
                   </tr>
                 </thead>
@@ -110,7 +110,7 @@ export default function Calculator({ onUnauthorized }: Props) {
                         {s.start_ft} – {s.end_ft} ft
                       </td>
                       <td>{fmt(s.feet)}</td>
-                      <td>{fmt(s.rate_per_100ft)}</td>
+                      <td>{fmt(s.rate_per_ft)}</td>
                       <td>{fmt(s.cost)}</td>
                     </tr>
                   ))}

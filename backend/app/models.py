@@ -34,12 +34,14 @@ class User(SQLModel, table=True):
 
 
 class RateRangeMode(str, Enum):
-    """How a range's ``rate`` value is applied to each 100 ft slice.
+    """How a range's ``rate`` value resolves to a per-foot cost.
 
-    * ``FIXED``    — every 100 ft slice in the range charges ``rate``.
-    * ``STEP_UP``  — each 100 ft slice charges the *previous* slice's rate
-      plus ``rate``. (For the very first range with no predecessor, the
-      implicit previous rate is ``0``.)
+    * ``FIXED``    — ``rate`` is the absolute per-foot cost charged for
+      every foot in the range.
+    * ``STEP_UP``  — ``rate`` is a per-foot increment added to the
+      *previous* range's resolved per-foot rate; the sum is then charged
+      for every foot in this range. (For the very first range with no
+      predecessor, the implicit previous rate is ``0``.)
     """
 
     FIXED = "fixed"
@@ -49,11 +51,11 @@ class RateRangeMode(str, Enum):
 class RateRange(SQLModel, table=True):
     """A single admin-defined pricing range of the rate ladder.
 
-    Ranges are contiguous, non-overlapping, in ascending ``start_ft``, and
-    the first range must start at ``0``. ``end_ft > start_ft``, both are
-    non-negative multiples of 100 so the per-100-ft calculator stays
-    integer-clean. ``compute_cost`` walks the ranges in order and extends
-    the rate accordingly (see :class:`RateRangeMode`).
+    Ranges are contiguous, non-overlapping, in ascending ``start_ft``,
+    and the first range must start at ``0``. ``end_ft > start_ft``.
+    ``compute_cost`` walks the ranges in order, resolves each to a
+    per-foot rate (see :class:`RateRangeMode`), and charges that rate
+    for each foot drilled within the range.
     """
 
     __tablename__ = "rate_ranges"

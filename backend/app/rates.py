@@ -1,17 +1,19 @@
-"""Admin-defined rate ranges + per-100-ft cost calculator.
+"""Admin-defined rate ranges + per-foot cost calculator.
 
 Admins define an ordered list of pricing ranges (stored in
-``rate_ranges``). Each range has a ``mode`` — ``fixed`` (flat rate per
-100 ft) or ``step_up`` (previous slice rate + range.rate, repeated per
-100 ft) — plus a numeric ``rate`` whose meaning depends on the mode.
+``rate_ranges``). Each range has a ``mode`` — ``fixed`` (an absolute
+per-foot rate for the entire range) or ``step_up`` (previous range's
+per-foot rate + ``range.rate``, applied to every foot in this range) —
+plus a numeric ``rate`` whose meaning depends on the mode. In both
+modes the resulting per-foot rate is charged for each foot that falls
+inside the range.
 
-Validation: ranges must be contiguous, non-overlapping, start at 0 ft,
-and ``start_ft`` / ``end_ft`` must be non-negative multiples of 100 so
-every 100-ft slice lands exactly inside one range.
+Validation: ranges must be contiguous, non-overlapping, and start at
+0 ft. ``end_ft`` must be strictly greater than ``start_ft``.
 
-``compute_cost`` walks the admin-defined ranges, expands them into 100-ft
-slices with the correct per-slice rate, and returns the breakdown + total
-for a requested depth. Casing is surfaced as a separate additive fee.
+``compute_cost`` walks the admin-defined ranges, clips them to the
+requested depth, and returns the per-range breakdown + total. Casing
+is surfaced as a separate additive fee.
 """
 from __future__ import annotations
 
@@ -47,10 +49,6 @@ class RateRangeIn(BaseModel):
 
     @model_validator(mode="after")
     def _validate(self) -> "RateRangeIn":
-        if self.start_ft % 100 != 0:
-            raise ValueError("start_ft must be a multiple of 100")
-        if self.end_ft % 100 != 0:
-            raise ValueError("end_ft must be a multiple of 100")
         if self.end_ft <= self.start_ft:
             raise ValueError("end_ft must be greater than start_ft")
         return self
@@ -64,11 +62,11 @@ class RateRangeOut(BaseModel):
 
 
 class DerivedSlice(BaseModel):
-    """One derived 100 ft slice with its computed cost-per-100ft rate."""
+    """One admin-defined range with its resolved per-foot rate."""
 
     start_ft: int
     end_ft: int
-    rate: float
+    rate: float  # per-foot rate charged for every foot in this range
     mode: RateRangeMode  # mode of the range that produced this slice
 
 
@@ -90,8 +88,8 @@ class RatesUpdateRequest(BaseModel):
 class CostSlice(BaseModel):
     start_ft: int
     end_ft: int
-    feet: float  # portion of this slice counted (<=100, prorated at the tail)
-    rate_per_100ft: float
+    feet: float  # feet of this range counted toward the depth (clipped at the tail)
+    rate_per_ft: float
     cost: float
 
 
@@ -117,11 +115,10 @@ router = APIRouter(tags=["rates"])
 # ---------------------------------------------------------------------------
 
 
-#: Soft cap on how many 100-ft slices the ladder may expand into. Keeps
-#: ``derive_slices`` + ``GET /api/rates`` bounded even if an admin (or
-#: compromised admin token) submits a very wide range. 300 slices covers
-#: 30_000 ft, comfortably beyond the default 3_000 ft display ladder.
-MAX_DERIVED_SLICES: int = 300
+#: Hard cap on how many ranges an admin can define. Keeps
+#: ``GET /api/rates`` and the editor UI bounded even if an admin (or
+#: compromised admin token) submits an absurd ladder.
+MAX_RANGES: int = 50
 
 
 def validate_range_chain(ranges: List[RateRangeIn]) -> None:
@@ -150,47 +147,43 @@ def validate_range_chain(ranges: List[RateRangeIn]) -> None:
             )
         prev_end = r.end_ft
 
-    total_slices = sum((r.end_ft - r.start_ft) // 100 for r in ranges)
-    if total_slices > MAX_DERIVED_SLICES:
+    if len(ranges) > MAX_RANGES:
         raise ValueError(
-            f"Ladder is too long: {total_slices} 100-ft slices "
-            f"(max {MAX_DERIVED_SLICES} = {MAX_DERIVED_SLICES * 100} ft)"
+            f"Too many ranges: {len(ranges)} (max {MAX_RANGES})"
         )
 
 
 def derive_slices(ranges: List[RateRange] | List[RateRangeIn]) -> List[DerivedSlice]:
-    """Expand admin-defined ranges into 100-ft slices with per-slice rates.
+    """Resolve each admin-defined range to its per-foot rate.
 
     Accepts either ORM rows or the request DTO — they share the fields
     this function cares about.
 
     ``rate`` semantics depend on mode:
 
-    * ``FIXED``   — ``rate`` is cost **per foot**, so the per-100-ft rate
-      surfaced on each derived slice is ``rate * 100``.
-    * ``STEP_UP`` — ``rate`` is a cost-per-100-ft **increment**. Each
-      slice's per-100-ft rate is the previous slice's per-100-ft rate
-      plus ``rate``, starting from 0 if there is no predecessor.
+    * ``FIXED``   — ``rate`` is an absolute **per-foot** cost charged
+      for every foot in the range.
+    * ``STEP_UP`` — ``rate`` is a **per-foot increment** on top of the
+      previous range's resolved per-foot rate (``0`` if there is no
+      predecessor). The resulting per-foot rate is charged for every
+      foot in this range.
     """
     slices: List[DerivedSlice] = []
     prev_rate = 0.0
     for r in ranges:
-        start = r.start_ft
-        while start < r.end_ft:
-            if r.mode == RateRangeMode.FIXED:
-                this_rate = r.rate * 100.0
-            else:  # STEP_UP
-                this_rate = prev_rate + r.rate
-            slices.append(
-                DerivedSlice(
-                    start_ft=start,
-                    end_ft=start + 100,
-                    rate=this_rate,
-                    mode=r.mode,
-                )
+        if r.mode == RateRangeMode.FIXED:
+            this_rate = float(r.rate)
+        else:  # STEP_UP
+            this_rate = prev_rate + float(r.rate)
+        slices.append(
+            DerivedSlice(
+                start_ft=r.start_ft,
+                end_ft=r.end_ft,
+                rate=this_rate,
+                mode=r.mode,
             )
-            prev_rate = this_rate
-            start += 100
+        )
+        prev_rate = this_rate
     return slices
 
 
@@ -199,7 +192,11 @@ def compute_cost(
     depth: float,
     casing: float,
 ) -> CostBreakdown:
-    """Compute the per-100-ft cost breakdown + totals for ``depth``.
+    """Compute the per-range cost breakdown + totals for ``depth``.
+
+    Each range's per-foot rate (resolved via :func:`derive_slices`) is
+    multiplied by the feet of drilling that fall within the range, up
+    to the requested depth.
 
     The depth must fall inside the admin-defined ladder — if it exceeds
     the last range's ``end_ft`` we surface ``ValueError`` so the caller
@@ -222,24 +219,25 @@ def compute_cost(
 
     derived = derive_slices(ranges)
     cost_slices: List[CostSlice] = []
-    remaining = float(depth)
     amount = 0.0
     for s in derived:
-        if remaining <= 0:
+        if depth <= s.start_ft:
             break
-        feet = 100.0 if remaining >= 100 else remaining
-        cost = round(feet / 100.0 * s.rate, 4)
+        end_in_range = min(float(depth), float(s.end_ft))
+        feet = end_in_range - float(s.start_ft)
+        if feet <= 0:
+            continue
+        cost = round(feet * s.rate, 4)
         cost_slices.append(
             CostSlice(
                 start_ft=s.start_ft,
-                end_ft=s.start_ft + int(feet) if feet < 100 else s.end_ft,
+                end_ft=int(end_in_range) if end_in_range != s.end_ft else s.end_ft,
                 feet=feet,
-                rate_per_100ft=s.rate,
+                rate_per_ft=s.rate,
                 cost=cost,
             )
         )
         amount += cost
-        remaining -= feet
 
     amount = round(amount, 2)
     total = round(amount + casing, 2)
@@ -259,8 +257,8 @@ def compute_cost(
 
 
 DEFAULT_BOOTSTRAP_RANGES: List[RateRangeIn] = [
-    RateRangeIn(start_ft=0, end_ft=300, mode=RateRangeMode.FIXED, rate=0.0),
-    RateRangeIn(start_ft=300, end_ft=1000, mode=RateRangeMode.STEP_UP, rate=10.0),
+    RateRangeIn(start_ft=0, end_ft=300, mode=RateRangeMode.FIXED, rate=100.0),
+    RateRangeIn(start_ft=300, end_ft=1000, mode=RateRangeMode.STEP_UP, rate=50.0),
     RateRangeIn(start_ft=1000, end_ft=3000, mode=RateRangeMode.STEP_UP, rate=100.0),
 ]
 

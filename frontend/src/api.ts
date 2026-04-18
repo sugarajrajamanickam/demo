@@ -79,7 +79,7 @@ export interface CostSlice {
   start_ft: number;
   end_ft: number;
   feet: number;
-  rate_per_100ft: number;
+  rate_per_ft: number;
   cost: number;
 }
 

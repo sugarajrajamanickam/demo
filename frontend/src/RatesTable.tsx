@@ -28,7 +28,7 @@ const toDraft = (r: RateRange): DraftRow => ({
 });
 
 const modeLabel = (m: RateRangeMode): string =>
-  m === "fixed" ? "Fixed rate" : "Step up (+rate / 100 ft)";
+  m === "fixed" ? "Fixed rate" : "Step up (+rate / ft)";
 
 const formatSlice = (s: DerivedSlice): string =>
   `${s.start_ft} – ${s.end_ft} ft`;
@@ -98,13 +98,11 @@ export default function RatesTable({ editable, onUnauthorized }: Props) {
       if (
         !Number.isFinite(start) ||
         start < 0 ||
-        start % 100 !== 0 ||
         !Number.isFinite(end) ||
-        end <= start ||
-        end % 100 !== 0
+        end <= start
       ) {
         setError(
-          `Range ${i + 1}: start/end must be non-negative multiples of 100 and end > start`
+          `Range ${i + 1}: start/end must be non-negative numbers and end > start`
         );
         return null;
       }
@@ -174,7 +172,7 @@ export default function RatesTable({ editable, onUnauthorized }: Props) {
                   <th>Start (ft)</th>
                   <th>End (ft)</th>
                   <th>Mode</th>
-                  <th>Rate <small className="muted">(fixed = per ft · step up = per 100 ft step)</small></th>
+                  <th>Rate <small className="muted">(per ft; step up adds to previous range's per-ft rate)</small></th>
                   <th aria-label="Actions"></th>
                 </tr>
               </thead>
@@ -185,7 +183,7 @@ export default function RatesTable({ editable, onUnauthorized }: Props) {
                     <td>
                       <input
                         type="number"
-                        step="100"
+                        step="any"
                         min="0"
                         value={row.start_ft}
                         onChange={(e) =>
@@ -198,7 +196,7 @@ export default function RatesTable({ editable, onUnauthorized }: Props) {
                     <td>
                       <input
                         type="number"
-                        step="100"
+                        step="any"
                         min="0"
                         value={row.end_ft}
                         onChange={(e) =>
@@ -219,7 +217,7 @@ export default function RatesTable({ editable, onUnauthorized }: Props) {
                         aria-label={`Range ${idx + 1} mode`}
                       >
                         <option value="fixed">Fixed rate</option>
-                        <option value="step_up">Step up (+rate / 100 ft)</option>
+                        <option value="step_up">Step up (+rate / ft)</option>
                       </select>
                     </td>
                     <td>
@@ -235,9 +233,7 @@ export default function RatesTable({ editable, onUnauthorized }: Props) {
                           required
                           aria-label={`Range ${idx + 1} rate`}
                         />
-                        <span className="muted rate-unit">
-                          {row.mode === "fixed" ? "/ ft" : "/ 100 ft step"}
-                        </span>
+                        <span className="muted rate-unit">/ ft</span>
                       </div>
                     </td>
                     <td>
@@ -275,10 +271,11 @@ export default function RatesTable({ editable, onUnauthorized }: Props) {
             )}
           </div>
           <p className="muted rates-hint">
-            Ranges must be contiguous and start at 0 ft. For <em>fixed</em>{" "}
-            rows the rate is charged <strong>per foot</strong>. For{" "}
-            <em>step up</em> rows the rate is added to the previous 100-ft
-            slice's per-100-ft cost (starting from 0 if it's the first range).
+            Ranges must be contiguous and start at 0 ft. In both modes the
+            rate is charged <strong>per foot</strong> drilled inside the
+            range. <em>Fixed</em> sets an absolute per-foot rate;{" "}
+            <em>step up</em> adds its rate to the previous range's per-foot
+            rate (starting from 0 if it's the first range).
           </p>
         </form>
       ) : null}
@@ -288,7 +285,7 @@ export default function RatesTable({ editable, onUnauthorized }: Props) {
             <tr>
               <th>Range</th>
               <th>Mode</th>
-              <th>Rate (per 100 ft)</th>
+              <th>Rate (per ft)</th>
             </tr>
           </thead>
           <tbody>
