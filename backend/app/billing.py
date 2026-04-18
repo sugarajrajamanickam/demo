@@ -80,11 +80,11 @@ FONT_REGULAR, FONT_BOLD = _register_invoice_fonts()
 # still readable (no black boxes in the PDF).
 _RUPEE_PREFIX = "\u20B9" if FONT_REGULAR == "InvoiceSans" else "Rs "
 
-from sqlmodel import Session
+from sqlmodel import Session, select
 
 from .auth import get_current_user
 from .db import get_session
-from .models import JobType, User
+from .models import Bill, Customer, JobType, User
 from .rates import (
     CostBreakdown,
     MAX_DEPTH_FT,
@@ -878,11 +878,46 @@ def download_bill(
     _: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> Response:
-    """Return the same invoice as a downloadable PDF."""
+    """Render the invoice PDF **and** persist the bill against the customer.
+
+    The customer must already exist (looked up by phone number). This is
+    a deliberate guard: payments can only be recorded against a known
+    customer, so we reject the download until one is created via the
+    Payments page.
+    """
+    customer = session.exec(
+        select(Customer).where(Customer.phone == payload.customer_phone)
+    ).first()
+    if customer is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=(
+                f"No customer found with phone {payload.customer_phone}. "
+                "Create the customer on the Payments page before issuing a bill."
+            ),
+        )
+
     preview = _build_preview_for_request(payload, session)
     pdf_bytes = render_invoice_pdf(preview)
     safe_invoice_id = preview.invoice_number.replace("/", "-")
     filename = f"{safe_invoice_id}.pdf"
+
+    bill = Bill(
+        customer_id=customer.id,  # type: ignore[arg-type]
+        invoice_number=preview.invoice_number,
+        invoice_date=preview.invoice_date,
+        job_type=preview.job_type.value,
+        depth=preview.depth,
+        casing_7_pieces=preview.casing_7_pieces,
+        casing_10_pieces=preview.casing_10_pieces,
+        taxable_value=preview.taxable_value,
+        total_tax=preview.total_tax,
+        non_taxable_total=preview.non_taxable_total,
+        grand_total=preview.grand_total,
+    )
+    session.add(bill)
+    session.commit()
+
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",

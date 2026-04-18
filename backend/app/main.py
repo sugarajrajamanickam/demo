@@ -24,6 +24,7 @@ from .db import get_session, init_db
 from .models import User
 from .billing import router as billing_router
 from .password import router as password_router
+from .payments import router as payments_router
 from .rates import bootstrap_rate_config, router as rates_router
 
 app = FastAPI(title="SVLS Rig Service", version="2.1.0")
@@ -103,6 +104,7 @@ app.include_router(admin_router)
 app.include_router(password_router)
 app.include_router(rates_router)
 app.include_router(billing_router)
+app.include_router(payments_router)
 
 
 # ---------------------------------------------------------------------------

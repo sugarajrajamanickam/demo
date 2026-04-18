@@ -1051,3 +1051,249 @@ body,
     flex-direction: column;
   }
 }
+
+/* --- Payments page ------------------------------------------------------ */
+
+.payments-page {
+  max-width: 1080px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.payments-search {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.payments-search-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: center;
+}
+.payments-search-row input[type="search"] {
+  flex: 1;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 1rem;
+}
+
+.customer-create-form {
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  background: #fafafa;
+}
+.customer-create-form h3 {
+  margin: 0 0 0.25rem 0;
+}
+.customer-create-form label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.9rem;
+  gap: 0.25rem;
+}
+.customer-create-form input {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+}
+
+.form-row {
+  display: flex;
+  gap: 0.75rem;
+}
+.form-row label {
+  flex: 1;
+}
+
+.customer-results {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+.customer-result-btn {
+  width: 100%;
+  text-align: left;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+  padding: 0.6rem 0.9rem;
+  cursor: pointer;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 0.25rem 1rem;
+}
+.customer-result-btn:hover {
+  background: #f3f4f6;
+  border-color: #d1d5db;
+}
+.customer-result-name {
+  font-weight: 600;
+}
+.customer-result-phone {
+  color: #4b5563;
+  font-variant-numeric: tabular-nums;
+}
+.customer-result-address {
+  grid-column: 1 / -1;
+  font-size: 0.85rem;
+}
+
+.customer-card {
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 1rem;
+  background: #fafafa;
+}
+.customer-card h3 {
+  margin: 0 0 0.25rem 0;
+}
+.customer-meta {
+  display: flex;
+  gap: 1rem;
+  flex-wrap: wrap;
+  color: #4b5563;
+  font-size: 0.9rem;
+  margin-bottom: 0.75rem;
+}
+.customer-totals {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+.customer-totals > div,
+.bill-amounts > div {
+  display: flex;
+  flex-direction: column;
+  padding: 0.5rem 0.75rem;
+  background: white;
+  border: 1px solid #e5e7eb;
+  border-radius: 6px;
+}
+.customer-totals .label,
+.bill-amounts .label {
+  color: #6b7280;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.customer-totals .value,
+.bill-amounts .value {
+  font-size: 1.1rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.customer-totals .value.outstanding,
+.bill-amounts .value.outstanding {
+  color: #b91c1c;
+}
+.customer-totals .value.paid,
+.bill-amounts .value.paid {
+  color: #15803d;
+}
+
+.bills-table,
+.payments-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+.bills-table th,
+.bills-table td,
+.payments-table th,
+.payments-table td {
+  padding: 0.4rem 0.5rem;
+  border-bottom: 1px solid #e5e7eb;
+  text-align: left;
+}
+.bills-table th.num,
+.bills-table td.num,
+.payments-table th.num,
+.payments-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.bills-table td.outstanding {
+  color: #b91c1c;
+  font-weight: 600;
+}
+.bills-table td.paid {
+  color: #15803d;
+}
+.row-actions {
+  display: flex;
+  gap: 0.5rem;
+}
+.btn-danger {
+  color: #b91c1c;
+}
+
+.bill-summary-card {
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 1rem;
+  background: #fafafa;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+.bill-amounts {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+}
+
+.payment-form {
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.payment-form h4 {
+  margin: 0;
+}
+.payment-form label {
+  display: flex;
+  flex-direction: column;
+  font-size: 0.9rem;
+  gap: 0.25rem;
+}
+.payment-form input,
+.payment-form select {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+}
+
+.payments-table tr.editing td {
+  background: #fef3c7;
+}
+.payments-table input,
+.payments-table select {
+  width: 100%;
+  padding: 0.25rem 0.4rem;
+  border: 1px solid #d1d5db;
+  border-radius: 4px;
+}
+
+@media (max-width: 720px) {
+  .customer-totals,
+  .bill-amounts {
+    grid-template-columns: 1fr;
+  }
+  .form-row {
+    flex-direction: column;
+  }
+}
