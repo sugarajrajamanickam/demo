@@ -17,6 +17,12 @@ interface Props {
     casing7Pieces: number,
     casing10Pieces: number,
   ) => void;
+  onDownloadQuotation: (
+    depth: number,
+    jobType: JobType,
+    casing7Pieces: number,
+    casing10Pieces: number,
+  ) => void;
 }
 
 const fmt = (n: number): string =>
@@ -46,7 +52,11 @@ const fmtINR = (n: number): string => {
   return `${sign}₹${grouped}.${paise}`;
 };
 
-export default function Calculator({ onUnauthorized, onDownloadBill }: Props) {
+export default function Calculator({
+  onUnauthorized,
+  onDownloadBill,
+  onDownloadQuotation,
+}: Props) {
   const [jobType, setJobType] = useState<JobType>("new_bore");
   const [depth, setDepth] = useState("");
   const [casing7, setCasing7] = useState("");
@@ -296,22 +306,39 @@ export default function Calculator({ onUnauthorized, onDownloadBill }: Props) {
             </dl>
 
             <div className="download-bill-row">
-              <button
-                type="button"
-                className="primary"
-                onClick={() =>
-                  onDownloadBill(
-                    result.depth,
-                    result.job_type,
-                    result.casing_7_pieces,
-                    result.casing_10_pieces,
-                  )
-                }
-              >
-                Download bill
-              </button>
+              <div className="download-actions">
+                <button
+                  type="button"
+                  className="primary"
+                  onClick={() =>
+                    onDownloadBill(
+                      result.depth,
+                      result.job_type,
+                      result.casing_7_pieces,
+                      result.casing_10_pieces,
+                    )
+                  }
+                >
+                  Download bill
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    onDownloadQuotation(
+                      result.depth,
+                      result.job_type,
+                      result.casing_7_pieces,
+                      result.casing_10_pieces,
+                    )
+                  }
+                >
+                  Download quotation
+                </button>
+              </div>
               <p className="muted small">
-                Generates a GST-compliant tax invoice PDF (CGST Rule 46).
+                <strong>Bill</strong> — GST-compliant tax invoice PDF
+                (CGST Rule 46). <strong>Quotation</strong> — lightweight
+                pre-tax draft for enquiring customers.
               </p>
             </div>
           </div>

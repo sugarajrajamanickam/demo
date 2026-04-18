@@ -24,6 +24,7 @@ from .db import get_session, init_db
 from .models import User
 from .billing import router as billing_router
 from .password import router as password_router
+from .quotation import router as quotation_router
 from .rates import bootstrap_rate_config, router as rates_router
 
 app = FastAPI(title="SVLS Rig Service", version="2.1.0")
@@ -48,7 +49,11 @@ app.add_middleware(
     # read by the frontend to name the download. Both must be explicitly
     # exposed so `fetch().headers.get(...)` sees them in cross-origin dev
     # mode (Vite :5173 → FastAPI :8000). Same-origin prod is unaffected.
-    expose_headers=["Content-Disposition", "X-Invoice-Number"],
+    expose_headers=[
+        "Content-Disposition",
+        "X-Invoice-Number",
+        "X-Quotation-Number",
+    ],
 )
 
 
@@ -103,6 +108,7 @@ app.include_router(admin_router)
 app.include_router(password_router)
 app.include_router(rates_router)
 app.include_router(billing_router)
+app.include_router(quotation_router)
 
 
 # ---------------------------------------------------------------------------
