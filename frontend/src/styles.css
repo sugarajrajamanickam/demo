@@ -799,6 +799,14 @@ body,
   margin: 0 auto;
 }
 
+/* The shared `.card` sets max-width: 420px which is too narrow for the
+ * invoice-style layout (2-column supplier/meta grid + 7-column line-item
+ * table). Let bill-page cards fill the full 960px container. */
+.bill-page > .card {
+  max-width: none;
+  width: 100%;
+}
+
 .bill-header-row {
   display: flex;
   justify-content: flex-start;
