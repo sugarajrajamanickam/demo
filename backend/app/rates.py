@@ -288,7 +288,7 @@ def compute_cost(
         cost_slices.append(
             CostSlice(
                 start_ft=sub_begin + 1,
-                end_ft=int(effective_end),
+                end_ft=max(sub_begin + 1, int(effective_end)),
                 feet=feet,
                 rate_per_ft=rate_per_ft,
                 cost=cost,
