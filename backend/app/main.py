@@ -44,6 +44,11 @@ app.add_middleware(
     allow_credentials=not is_wildcard,
     allow_methods=["*"],
     allow_headers=["*"],
+    # `Content-Disposition` carries the PDF filename; `X-Invoice-Number` is
+    # read by the frontend to name the download. Both must be explicitly
+    # exposed so `fetch().headers.get(...)` sees them in cross-origin dev
+    # mode (Vite :5173 → FastAPI :8000). Same-origin prod is unaffected.
+    expose_headers=["Content-Disposition", "X-Invoice-Number"],
 )
 
 
