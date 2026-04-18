@@ -22,6 +22,7 @@ import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import List
+from xml.sax.saxutils import escape as _xml_escape
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
@@ -471,20 +472,31 @@ def render_invoice_pdf(preview: BillPreview) -> bytes:
     story.append(header)
     story.append(Spacer(1, 6))
 
-    # Bill-to block
+    # Bill-to block. All user-provided strings are XML-escaped before being
+    # handed to ReportLab's Paragraph (which parses its input as XML) so that
+    # a stray `<`, `>`, or `&` in a customer's name or address doesn't crash
+    # PDF generation.
+    def esc(value: str | None) -> str:
+        return _xml_escape(value) if value else ""
+
     billto_rows: List = [[Paragraph("<b>Bill To</b>", small_bold)]]
-    billto_rows.append([Paragraph(preview.customer_name, small_bold)])
-    billto_rows.append([Paragraph(f"Phone: {preview.customer_phone}", small)])
+    billto_rows.append([Paragraph(esc(preview.customer_name), small_bold)])
+    billto_rows.append([Paragraph(f"Phone: {esc(preview.customer_phone)}", small)])
     if preview.customer_address:
-        billto_rows.append([Paragraph(preview.customer_address, small)])
+        billto_rows.append([Paragraph(esc(preview.customer_address), small)])
     if preview.customer_state:
-        state_code = preview.customer_state_code or "—"
+        state_code = esc(preview.customer_state_code) or "—"
         billto_rows.append(
-            [Paragraph(f"State: {preview.customer_state} (Code {state_code})", small)]
+            [
+                Paragraph(
+                    f"State: {esc(preview.customer_state)} (Code {state_code})",
+                    small,
+                )
+            ]
         )
     if preview.customer_gstin:
         billto_rows.append(
-            [Paragraph(f"GSTIN: <b>{preview.customer_gstin}</b>", small)]
+            [Paragraph(f"GSTIN: <b>{esc(preview.customer_gstin)}</b>", small)]
         )
     billto = Table(billto_rows, colWidths=[180 * mm])
     billto.setStyle(
