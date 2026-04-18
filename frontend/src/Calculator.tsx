@@ -2,14 +2,18 @@ import { FormEvent, useEffect, useState } from "react";
 import {
   CasingPrices,
   CostBreakdown,
+  JobType,
+  ReborePrice,
   calculateCost,
   fetchCasingPrices,
+  fetchReborePrice,
 } from "./api";
 
 interface Props {
   onUnauthorized: () => void;
   onDownloadBill: (
     depth: number,
+    jobType: JobType,
     casing7Pieces: number,
     casing10Pieces: number,
   ) => void;
@@ -43,19 +47,23 @@ const fmtINR = (n: number): string => {
 };
 
 export default function Calculator({ onUnauthorized, onDownloadBill }: Props) {
+  const [jobType, setJobType] = useState<JobType>("new_bore");
   const [depth, setDepth] = useState("");
   const [casing7, setCasing7] = useState("");
   const [casing10, setCasing10] = useState("");
   const [prices, setPrices] = useState<CasingPrices | null>(null);
+  const [rebore, setRebore] = useState<ReborePrice | null>(null);
   const [result, setResult] = useState<CostBreakdown | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
-    fetchCasingPrices()
-      .then((p) => {
-        if (!cancelled) setPrices(p);
+    Promise.all([fetchCasingPrices(), fetchReborePrice()])
+      .then(([p, r]) => {
+        if (cancelled) return;
+        setPrices(p);
+        setRebore(r);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -66,6 +74,12 @@ export default function Calculator({ onUnauthorized, onDownloadBill }: Props) {
       cancelled = true;
     };
   }, [onUnauthorized]);
+
+  const handleJobTypeChange = (next: JobType) => {
+    setJobType(next);
+    setResult(null);
+    setError(null);
+  };
 
   const parsePieces = (raw: string): number | null => {
     if (raw.trim() === "") return 0;
@@ -84,20 +98,27 @@ export default function Calculator({ onUnauthorized, onDownloadBill }: Props) {
       setError("Depth must be a non-negative number");
       return;
     }
-    const c7 = parsePieces(casing7);
-    const c10 = parsePieces(casing10);
-    if (c7 === null) {
-      setError("Casing 7\" pieces must be a non-negative whole number");
-      return;
-    }
-    if (c10 === null) {
-      setError("Casing 10\" pieces must be a non-negative whole number");
-      return;
+
+    let c7 = 0;
+    let c10 = 0;
+    if (jobType === "new_bore") {
+      const parsed7 = parsePieces(casing7);
+      const parsed10 = parsePieces(casing10);
+      if (parsed7 === null) {
+        setError("Casing 7\" pieces must be a non-negative whole number");
+        return;
+      }
+      if (parsed10 === null) {
+        setError("Casing 10\" pieces must be a non-negative whole number");
+        return;
+      }
+      c7 = parsed7;
+      c10 = parsed10;
     }
 
     setBusy(true);
     try {
-      const data = await calculateCost(depthNum, c7, c10);
+      const data = await calculateCost(depthNum, c7, c10, jobType);
       setResult(data);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Request failed";
@@ -114,6 +135,29 @@ export default function Calculator({ onUnauthorized, onDownloadBill }: Props) {
     <div className="calculator">
       <form className="card" onSubmit={handleSubmit}>
         <h2>Calculate</h2>
+        <fieldset className="job-type-group">
+          <legend>Job type</legend>
+          <label className="radio-option">
+            <input
+              type="radio"
+              name="job_type"
+              value="new_bore"
+              checked={jobType === "new_bore"}
+              onChange={() => handleJobTypeChange("new_bore")}
+            />
+            <span>New Bore</span>
+          </label>
+          <label className="radio-option">
+            <input
+              type="radio"
+              name="job_type"
+              value="re_bore"
+              checked={jobType === "re_bore"}
+              onChange={() => handleJobTypeChange("re_bore")}
+            />
+            <span>Re-Bore</span>
+          </label>
+        </fieldset>
         <label>
           <span className="field-label-text">
             Depth (ft)
@@ -127,39 +171,51 @@ export default function Calculator({ onUnauthorized, onDownloadBill }: Props) {
             onChange={(e) => setDepth(e.target.value)}
             required
           />
-        </label>
-        <label>
-          <span className="field-label-text">Casing 7" (pieces)</span>
-          <input
-            type="number"
-            step="1"
-            min="0"
-            value={casing7}
-            onChange={(e) => setCasing7(e.target.value)}
-            placeholder="0"
-          />
-          {prices && (
+          {jobType === "re_bore" && rebore && (
             <span className="muted small">
-              Admin rate: {fmtINR(prices.price_7in)} / piece
+              Admin re-bore rate: {fmtINR(rebore.price_per_foot)} / ft
+              {rebore.price_per_foot === 0
+                ? " (ask admin to set a non-zero rate)"
+                : ""}
             </span>
           )}
         </label>
-        <label>
-          <span className="field-label-text">Casing 10" (pieces)</span>
-          <input
-            type="number"
-            step="1"
-            min="0"
-            value={casing10}
-            onChange={(e) => setCasing10(e.target.value)}
-            placeholder="0"
-          />
-          {prices && (
-            <span className="muted small">
-              Admin rate: {fmtINR(prices.price_10in)} / piece
-            </span>
-          )}
-        </label>
+        {jobType === "new_bore" && (
+          <>
+            <label>
+              <span className="field-label-text">Casing 7" (pieces)</span>
+              <input
+                type="number"
+                step="1"
+                min="0"
+                value={casing7}
+                onChange={(e) => setCasing7(e.target.value)}
+                placeholder="0"
+              />
+              {prices && (
+                <span className="muted small">
+                  Admin rate: {fmtINR(prices.price_7in)} / piece
+                </span>
+              )}
+            </label>
+            <label>
+              <span className="field-label-text">Casing 10" (pieces)</span>
+              <input
+                type="number"
+                step="1"
+                min="0"
+                value={casing10}
+                onChange={(e) => setCasing10(e.target.value)}
+                placeholder="0"
+              />
+              {prices && (
+                <span className="muted small">
+                  Admin rate: {fmtINR(prices.price_10in)} / piece
+                </span>
+              )}
+            </label>
+          </>
+        )}
         {error && <p className="error">{error}</p>}
         <button type="submit" disabled={busy}>
           {busy ? "Computing…" : "Compute"}
@@ -244,6 +300,7 @@ export default function Calculator({ onUnauthorized, onDownloadBill }: Props) {
                 onClick={() =>
                   onDownloadBill(
                     result.depth,
+                    result.job_type,
                     result.casing_7_pieces,
                     result.casing_10_pieces,
                   )

@@ -10,6 +10,7 @@ import {
   updateUser,
 } from "./api";
 import CasingPricesCard from "./CasingPricesCard";
+import ReborePricesCard from "./ReborePricesCard";
 import RatesTable from "./RatesTable";
 import {
   FULL_NAME_HTML_PATTERN,
@@ -519,6 +520,8 @@ export default function Admin({ onUnauthorized, currentUsername }: Props) {
       </section>
 
       <CasingPricesCard onUnauthorized={onUnauthorized} />
+
+      <ReborePricesCard onUnauthorized={onUnauthorized} />
     </div>
   );
 }

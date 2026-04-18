@@ -39,7 +39,14 @@ from sqlmodel import Session, select
 
 from .auth import get_current_user, require_admin
 from .db import engine, get_session
-from .models import CasingPrice, RateRange, RateRangeMode, User
+from .models import (
+    CasingPrice,
+    JobType,
+    RateRange,
+    RateRangeMode,
+    ReborePrice,
+    User,
+)
 
 # Hard cap on depth the calculator will accept, both to bound server work
 # and to protect against unbounded admin ranges. 100_000 ft (~19 miles)
@@ -114,6 +121,7 @@ class CostSlice(BaseModel):
 
 class CostBreakdown(BaseModel):
     depth: float
+    job_type: JobType
     slices: List[CostSlice]
     amount: float  # sum of depth slice costs (pre-tax taxable value)
     casing_7_pieces: int
@@ -123,11 +131,13 @@ class CostBreakdown(BaseModel):
     casing_10_price_per_piece: float
     casing_10_amount: float
     casing_fee: float  # casing_7_amount + casing_10_amount; added after tax
+    rebore_price_per_foot: float  # admin-set flat rate (only meaningful for RE_BORE)
     total: float  # amount + casing_fee (no tax here — invoice layer adds GST)
 
 
 class CostRequest(BaseModel):
     depth: float = Field(..., ge=0, le=MAX_DEPTH_FT)
+    job_type: JobType = Field(default=JobType.NEW_BORE)
     casing_7_pieces: int = Field(default=0, ge=0, le=10_000)
     casing_10_pieces: int = Field(default=0, ge=0, le=10_000)
 
@@ -140,6 +150,14 @@ class CasingPricesOut(BaseModel):
 class CasingPricesUpdate(BaseModel):
     price_7in: float = Field(..., ge=0)
     price_10in: float = Field(..., ge=0)
+
+
+class ReborePriceOut(BaseModel):
+    price_per_foot: float
+
+
+class ReborePriceUpdate(BaseModel):
+    price_per_foot: float = Field(..., ge=0)
 
 
 router = APIRouter(tags=["rates"])
@@ -245,6 +263,9 @@ def compute_cost(
     casing_10_pieces: int,
     price_7in: float,
     price_10in: float,
+    *,
+    job_type: JobType = JobType.NEW_BORE,
+    rebore_price_per_foot: float = 0.0,
 ) -> CostBreakdown:
     """Compute the per-100-ft cost breakdown + casing add-ons for ``depth``.
 
@@ -265,6 +286,41 @@ def compute_cost(
         raise ValueError("casing pieces must be >= 0")
     if price_7in < 0 or price_10in < 0:
         raise ValueError("casing prices must be >= 0")
+    if rebore_price_per_foot < 0:
+        raise ValueError("rebore price must be >= 0")
+
+    if job_type == JobType.RE_BORE:
+        # Re-bore: flat per-foot rate, no casing, no rate-ladder tiers.
+        feet = float(depth)
+        rate = float(rebore_price_per_foot)
+        amount = round(feet * rate, 2)
+        slices: List[CostSlice] = []
+        if feet > 0:
+            slices.append(
+                CostSlice(
+                    start_ft=1,
+                    end_ft=max(1, int(feet)),
+                    feet=feet,
+                    rate_per_ft=rate,
+                    cost=amount,
+                )
+            )
+        return CostBreakdown(
+            depth=depth,
+            job_type=JobType.RE_BORE,
+            slices=slices,
+            amount=amount,
+            casing_7_pieces=0,
+            casing_7_price_per_piece=price_7in,
+            casing_7_amount=0.0,
+            casing_10_pieces=0,
+            casing_10_price_per_piece=price_10in,
+            casing_10_amount=0.0,
+            casing_fee=0.0,
+            rebore_price_per_foot=rate,
+            total=amount,
+        )
+
     if not ranges:
         raise ValueError("Rate ladder is empty — admin must define at least one range")
 
@@ -303,6 +359,7 @@ def compute_cost(
     total = round(amount + casing_fee, 2)
     return CostBreakdown(
         depth=depth,
+        job_type=JobType.NEW_BORE,
         slices=cost_slices,
         amount=amount,
         casing_7_pieces=casing_7_pieces,
@@ -312,6 +369,7 @@ def compute_cost(
         casing_10_price_per_piece=price_10in,
         casing_10_amount=c10_amount,
         casing_fee=casing_fee,
+        rebore_price_per_foot=rebore_price_per_foot,
         total=total,
     )
 
@@ -331,10 +389,11 @@ DEFAULT_BOOTSTRAP_RANGES: List[RateRangeIn] = [
 #: Default per-piece prices seeded on first boot (admin-editable thereafter).
 DEFAULT_CASING_PRICE_7IN: float = 0.0
 DEFAULT_CASING_PRICE_10IN: float = 0.0
+DEFAULT_REBORE_PRICE_PER_FOOT: float = 0.0
 
 
 def bootstrap_rate_config() -> None:
-    """Seed the default ladder + casing prices on first boot."""
+    """Seed the default ladder + casing prices + rebore price on first boot."""
     with Session(engine) as session:
         existing = session.exec(select(RateRange)).first()
         if existing is None:
@@ -356,6 +415,13 @@ def bootstrap_rate_config() -> None:
                     price_10in=DEFAULT_CASING_PRICE_10IN,
                 )
             )
+        if session.get(ReborePrice, 1) is None:
+            session.add(
+                ReborePrice(
+                    id=1,
+                    price_per_foot=DEFAULT_REBORE_PRICE_PER_FOOT,
+                )
+            )
         session.commit()
 
 
@@ -367,6 +433,16 @@ def _get_casing_prices(session: Session) -> CasingPrice:
             price_7in=DEFAULT_CASING_PRICE_7IN,
             price_10in=DEFAULT_CASING_PRICE_10IN,
         )
+        session.add(row)
+        session.commit()
+        session.refresh(row)
+    return row
+
+
+def _get_rebore_price(session: Session) -> ReborePrice:
+    row = session.get(ReborePrice, 1)
+    if row is None:
+        row = ReborePrice(id=1, price_per_foot=DEFAULT_REBORE_PRICE_PER_FOOT)
         session.add(row)
         session.commit()
         session.refresh(row)
@@ -438,8 +514,14 @@ def calculate_cost(
     _: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> CostBreakdown:
-    """Compute drilling amount + casing add-ons + pre-tax total."""
+    """Compute drilling amount + casing add-ons + pre-tax total.
+
+    For ``job_type=RE_BORE`` the rate ladder and casing inputs are
+    ignored; billing is a flat ``depth * rebore_price_per_foot`` with
+    GST applied later by the invoice layer.
+    """
     prices = _get_casing_prices(session)
+    rebore = _get_rebore_price(session)
     try:
         return compute_cost(
             _list_ranges(session),
@@ -448,6 +530,8 @@ def calculate_cost(
             payload.casing_10_pieces,
             prices.price_7in,
             prices.price_10in,
+            job_type=payload.job_type,
+            rebore_price_per_foot=rebore.price_per_foot,
         )
     except ValueError as err:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
@@ -480,3 +564,29 @@ def update_casing_prices(
     session.commit()
     session.refresh(row)
     return CasingPricesOut(price_7in=row.price_7in, price_10in=row.price_10in)
+
+
+@router.get("/api/rebore-price", response_model=ReborePriceOut)
+def get_rebore_price(
+    _: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> ReborePriceOut:
+    """Return the admin-set flat per-foot re-bore rate."""
+    row = _get_rebore_price(session)
+    return ReborePriceOut(price_per_foot=row.price_per_foot)
+
+
+@router.put("/api/admin/rebore-price", response_model=ReborePriceOut)
+def update_rebore_price(
+    payload: ReborePriceUpdate,
+    _: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> ReborePriceOut:
+    """Admin-only: set the flat per-foot re-bore rate."""
+    row = _get_rebore_price(session)
+    row.price_per_foot = payload.price_per_foot
+    row.updated_at = datetime.now(timezone.utc)
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return ReborePriceOut(price_per_foot=row.price_per_foot)

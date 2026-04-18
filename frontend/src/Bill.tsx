@@ -2,12 +2,14 @@ import { FormEvent, useState } from "react";
 import {
   BillPreview,
   BillRequest,
+  JobType,
   downloadBillPdf,
   previewBill,
 } from "./api";
 
 interface Props {
   depth: number;
+  jobType: JobType;
   casing7Pieces: number;
   casing10Pieces: number;
   onBack: () => void;
@@ -57,6 +59,7 @@ const fmtNum = (n: number): string =>
  */
 export default function Bill({
   depth,
+  jobType,
   casing7Pieces,
   casing10Pieces,
   onBack,
@@ -76,8 +79,9 @@ export default function Bill({
 
   const buildRequest = (): BillRequest => ({
     depth,
-    casing_7_pieces: casing7Pieces,
-    casing_10_pieces: casing10Pieces,
+    job_type: jobType,
+    casing_7_pieces: jobType === "new_bore" ? casing7Pieces : 0,
+    casing_10_pieces: jobType === "new_bore" ? casing10Pieces : 0,
     customer_name: customerName.trim(),
     customer_phone: customerPhone.trim(),
     customer_address: customerAddress.trim() || null,
@@ -146,13 +150,14 @@ export default function Bill({
       <form className="card bill-form" onSubmit={handlePreview}>
         <h2>Generate tax invoice</h2>
         <p className="muted small">
-          Depth <strong>{fmtNum(depth)} ft</strong>
-          {casing7Pieces > 0 && (
+          Job: <strong>{jobType === "re_bore" ? "Re-Bore" : "New Bore"}</strong>
+          {" · "}Depth <strong>{fmtNum(depth)} ft</strong>
+          {jobType === "new_bore" && casing7Pieces > 0 && (
             <>
               {" · "}Casing 7" <strong>{casing7Pieces} pcs</strong>
             </>
           )}
-          {casing10Pieces > 0 && (
+          {jobType === "new_bore" && casing10Pieces > 0 && (
             <>
               {" · "}Casing 10" <strong>{casing10Pieces} pcs</strong>
             </>
@@ -322,7 +327,6 @@ export default function Bill({
                 <col className="col-num" />
                 <col className="col-desc" />
                 <col className="col-hsn" />
-                <col className="col-range" />
                 <col className="col-qty" />
                 <col className="col-rate" />
                 <col className="col-amount" />
@@ -332,38 +336,28 @@ export default function Bill({
                   <th className="cell-num">#</th>
                   <th className="cell-left">Description</th>
                   <th className="cell-center">HSN/SAC</th>
-                  <th className="cell-center">Range</th>
-                  <th className="cell-right">Qty (ft)</th>
-                  <th className="cell-right">Rate / ft</th>
+                  <th className="cell-right">Qty</th>
+                  <th className="cell-right">Rate</th>
                   <th className="cell-right">Amount</th>
                 </tr>
               </thead>
               <tbody>
                 {preview.line_items.map((item, i) => (
-                  <tr key={`${item.start_ft}-${item.end_ft}`}>
+                  <tr key={`${i}-${item.description}`}>
                     <td className="cell-num">{i + 1}</td>
-                    <td className="cell-left">
-                      {i === 0 ? (
-                        <>
-                          {preview.description} — depth {fmtNum(preview.depth)} ft
-                        </>
-                      ) : (
-                        ""
-                      )}
+                    <td className="cell-left">{item.description}</td>
+                    <td className="cell-center">{item.hsn_sac || "—"}</td>
+                    <td className="cell-right">
+                      {fmtNum(item.qty)} {item.qty_unit}
                     </td>
-                    <td className="cell-center">{i === 0 ? preview.hsn_sac : ""}</td>
-                    <td className="cell-center">
-                      {item.start_ft} – {item.end_ft}
-                    </td>
-                    <td className="cell-right">{fmtNum(item.feet)}</td>
-                    <td className="cell-right">{fmtINR(item.rate_per_ft)}</td>
+                    <td className="cell-right">{fmtINR(item.rate)}</td>
                     <td className="cell-right">{fmtINR(item.amount)}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={5} />
+                  <td colSpan={4} />
                   <th className="cell-right">Taxable Value</th>
                   <td className="cell-right">
                     <strong>{fmtINR(preview.taxable_value)}</strong>
@@ -371,50 +365,26 @@ export default function Bill({
                 </tr>
                 {preview.is_interstate ? (
                   <tr>
-                    <td colSpan={5} />
+                    <td colSpan={4} />
                     <th className="cell-right">IGST @ {preview.igst_percent}%</th>
                     <td className="cell-right">{fmtINR(preview.igst_amount)}</td>
                   </tr>
                 ) : (
                   <>
                     <tr>
-                      <td colSpan={5} />
+                      <td colSpan={4} />
                       <th className="cell-right">CGST @ {preview.cgst_percent}%</th>
                       <td className="cell-right">{fmtINR(preview.cgst_amount)}</td>
                     </tr>
                     <tr>
-                      <td colSpan={5} />
+                      <td colSpan={4} />
                       <th className="cell-right">SGST @ {preview.sgst_percent}%</th>
                       <td className="cell-right">{fmtINR(preview.sgst_amount)}</td>
                     </tr>
                   </>
                 )}
-                {preview.casing_7_amount > 0 && (
-                  <tr>
-                    <td colSpan={5} />
-                    <th className="cell-right">
-                      Casing 7" ({preview.casing_7_pieces} ×{" "}
-                      {fmtINR(preview.casing_7_price_per_piece)})
-                    </th>
-                    <td className="cell-right">
-                      {fmtINR(preview.casing_7_amount)}
-                    </td>
-                  </tr>
-                )}
-                {preview.casing_10_amount > 0 && (
-                  <tr>
-                    <td colSpan={5} />
-                    <th className="cell-right">
-                      Casing 10" ({preview.casing_10_pieces} ×{" "}
-                      {fmtINR(preview.casing_10_price_per_piece)})
-                    </th>
-                    <td className="cell-right">
-                      {fmtINR(preview.casing_10_amount)}
-                    </td>
-                  </tr>
-                )}
                 <tr className="bill-total-row">
-                  <td colSpan={5} />
+                  <td colSpan={4} />
                   <th className="cell-right">Grand Total</th>
                   <td className="cell-right">
                     <strong>{fmtINR(preview.grand_total)}</strong>

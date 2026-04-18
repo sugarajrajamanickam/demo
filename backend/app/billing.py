@@ -84,11 +84,12 @@ from sqlmodel import Session
 
 from .auth import get_current_user
 from .db import get_session
-from .models import User
+from .models import JobType, User
 from .rates import (
     CostBreakdown,
     MAX_DEPTH_FT,
     _get_casing_prices,
+    _get_rebore_price,
     _list_ranges,
     compute_cost,
 )
@@ -150,6 +151,7 @@ class BillRequest(BaseModel):
     """Payload the UI sends to generate a bill PDF."""
 
     depth: float = Field(..., ge=0, le=MAX_DEPTH_FT)
+    job_type: JobType = Field(default=JobType.NEW_BORE)
     casing_7_pieces: int = Field(default=0, ge=0, le=10_000)
     casing_10_pieces: int = Field(default=0, ge=0, le=10_000)
     customer_name: str = Field(..., min_length=1, max_length=120)
@@ -179,11 +181,22 @@ class BillRequest(BaseModel):
 
 
 class BillLineItem(BaseModel):
-    start_ft: int
-    end_ft: int
-    feet: float
-    rate_per_ft: float
+    """One row of the tax-invoice items table.
+
+    Unified across drilling slices (per 100-ft sub-slice) and casing
+    rows (per-piece), so the PDF/preview can render them in a single
+    table with consistent columns. ``is_taxable`` is ``True`` for
+    drilling/re-bore rows (GST applies) and ``False`` for casing
+    (added after tax).
+    """
+
+    description: str
+    hsn_sac: str  # empty string if not applicable (e.g. casing)
+    qty: float
+    qty_unit: str  # "ft" for drilling, "pc" for casing
+    rate: float  # per-foot or per-piece
     amount: float
+    is_taxable: bool
 
 
 class BillPreview(BaseModel):
@@ -206,12 +219,12 @@ class BillPreview(BaseModel):
     customer_state_code: str | None
     customer_gstin: str | None
 
+    job_type: JobType
     hsn_sac: str
     description: str
     depth: float
 
-    # Casing add-ons (post-tax, no GST). ``casing_fee`` is the sum of
-    # both sizes; the UI + PDF render individual rows when pieces > 0.
+    # Casing add-ons (non-taxable; rendered as their own line items).
     casing_7_pieces: int
     casing_7_price_per_piece: float
     casing_7_amount: float
@@ -221,7 +234,8 @@ class BillPreview(BaseModel):
     casing_fee: float
 
     line_items: List[BillLineItem]
-    taxable_value: float  # = drilling amount (pre-tax, pre-casing)
+    taxable_value: float  # = drilling (or re-bore) amount — excludes casing
+    non_taxable_total: float  # = casing_fee (post-tax addition)
     is_interstate: bool
     cgst_percent: float
     sgst_percent: float
@@ -382,18 +396,71 @@ def build_preview(
         sgst_amount = round(taxable_value * SGST_PERCENT / 100.0, 2)
         igst_amount = 0.0
     total_tax = round(cgst_amount + sgst_amount + igst_amount, 2)
-    grand_total = round(taxable_value + total_tax + breakdown.casing_fee, 2)
+    non_taxable_total = round(breakdown.casing_fee, 2)
+    grand_total = round(taxable_value + total_tax + non_taxable_total, 2)
 
-    line_items = [
-        BillLineItem(
-            start_ft=s.start_ft,
-            end_ft=s.end_ft,
-            feet=s.feet,
-            rate_per_ft=s.rate_per_ft,
-            amount=s.cost,
-        )
-        for s in breakdown.slices
-    ]
+    service_desc = (
+        "Borewell drilling services"
+        if breakdown.job_type == JobType.NEW_BORE
+        else "Borewell re-bore services"
+    )
+
+    line_items: List[BillLineItem] = []
+    if breakdown.job_type == JobType.RE_BORE:
+        if breakdown.amount > 0:
+            line_items.append(
+                BillLineItem(
+                    description=(
+                        f"{service_desc} \u2014 depth {breakdown.depth:g} ft "
+                        f"(flat rate)"
+                    ),
+                    hsn_sac=HSN_SAC_CODE,
+                    qty=float(breakdown.depth),
+                    qty_unit="ft",
+                    rate=float(breakdown.rebore_price_per_foot),
+                    amount=round(breakdown.amount, 2),
+                    is_taxable=True,
+                )
+            )
+    else:
+        for s in breakdown.slices:
+            line_items.append(
+                BillLineItem(
+                    description=(
+                        f"{service_desc} \u2014 {s.start_ft}\u2013{s.end_ft} ft"
+                    ),
+                    hsn_sac=HSN_SAC_CODE,
+                    qty=float(s.feet),
+                    qty_unit="ft",
+                    rate=float(s.rate_per_ft),
+                    amount=round(float(s.cost), 2),
+                    is_taxable=True,
+                )
+            )
+        if breakdown.casing_7_pieces > 0 and breakdown.casing_7_amount > 0:
+            line_items.append(
+                BillLineItem(
+                    description='Casing 7" (per piece)',
+                    hsn_sac="",
+                    qty=float(breakdown.casing_7_pieces),
+                    qty_unit="pc",
+                    rate=float(breakdown.casing_7_price_per_piece),
+                    amount=round(breakdown.casing_7_amount, 2),
+                    is_taxable=False,
+                )
+            )
+        if breakdown.casing_10_pieces > 0 and breakdown.casing_10_amount > 0:
+            line_items.append(
+                BillLineItem(
+                    description='Casing 10" (per piece)',
+                    hsn_sac="",
+                    qty=float(breakdown.casing_10_pieces),
+                    qty_unit="pc",
+                    rate=float(breakdown.casing_10_price_per_piece),
+                    amount=round(breakdown.casing_10_amount, 2),
+                    is_taxable=False,
+                )
+            )
 
     return BillPreview(
         invoice_number=_make_invoice_number(now),
@@ -411,8 +478,9 @@ def build_preview(
         customer_state=req.customer_state,
         customer_state_code=req.customer_state_code,
         customer_gstin=req.customer_gstin,
+        job_type=breakdown.job_type,
         hsn_sac=HSN_SAC_CODE,
-        description=SERVICE_DESCRIPTION,
+        description=service_desc,
         depth=breakdown.depth,
         casing_7_pieces=breakdown.casing_7_pieces,
         casing_7_price_per_piece=breakdown.casing_7_price_per_piece,
@@ -423,6 +491,7 @@ def build_preview(
         casing_fee=breakdown.casing_fee,
         line_items=line_items,
         taxable_value=taxable_value,
+        non_taxable_total=non_taxable_total,
         is_interstate=is_interstate,
         cgst_percent=CGST_PERCENT,
         sgst_percent=SGST_PERCENT,
@@ -588,35 +657,35 @@ def render_invoice_pdf(preview: BillPreview) -> bytes:
     story.append(billto)
     story.append(Spacer(1, 8))
 
-    # Line-item table
+    # Line-item table. Unified rows across drilling sub-slices and casing
+    # pieces, with casing shown in the main items table (not as a GST-footer
+    # add-on). The footer holds only Taxable Value, GST lines, and Grand
+    # Total. Casing rows carry is_taxable=False so they're excluded from
+    # the taxable-value subtotal.
     header_row = [
         "#",
         "Description",
         "HSN/SAC",
-        "Range (ft)",
-        "Qty (ft)",
-        "Rate / ft",
+        "Qty",
+        "Rate",
         "Amount",
     ]
     data: List[List] = [header_row]
-    description_para = Paragraph(
-        f"{preview.description} — depth {preview.depth:g} ft", small
-    )
     for idx, item in enumerate(preview.line_items, start=1):
         data.append(
             [
                 str(idx),
-                description_para if idx == 1 else "",
-                preview.hsn_sac if idx == 1 else "",
-                f"{item.start_ft} – {item.end_ft}",
-                f"{item.feet:g}",
-                _format_inr(item.rate_per_ft),
+                Paragraph(_xml_escape(item.description), small),
+                item.hsn_sac or "—",
+                f"{item.qty:g} {item.qty_unit}",
+                _format_inr(item.rate),
                 _format_inr(item.amount),
             ]
         )
+
+    item_row_count = len(preview.line_items)
     data.append(
         [
-            "",
             "",
             "",
             "",
@@ -632,7 +701,6 @@ def render_invoice_pdf(preview: BillPreview) -> bytes:
                 "",
                 "",
                 "",
-                "",
                 f"IGST @ {preview.igst_percent:g}%",
                 _format_inr(preview.igst_amount),
             ]
@@ -640,7 +708,6 @@ def render_invoice_pdf(preview: BillPreview) -> bytes:
     else:
         data.append(
             [
-                "",
                 "",
                 "",
                 "",
@@ -655,40 +722,12 @@ def render_invoice_pdf(preview: BillPreview) -> bytes:
                 "",
                 "",
                 "",
-                "",
                 f"SGST @ {preview.sgst_percent:g}%",
                 _format_inr(preview.sgst_amount),
             ]
         )
-    if preview.casing_7_amount:
-        data.append(
-            [
-                "",
-                "",
-                "",
-                "",
-                "",
-                f'Casing 7" ({preview.casing_7_pieces} × '
-                f"{_format_inr(preview.casing_7_price_per_piece)})",
-                _format_inr(preview.casing_7_amount),
-            ]
-        )
-    if preview.casing_10_amount:
-        data.append(
-            [
-                "",
-                "",
-                "",
-                "",
-                "",
-                f'Casing 10" ({preview.casing_10_pieces} × '
-                f"{_format_inr(preview.casing_10_price_per_piece)})",
-                _format_inr(preview.casing_10_amount),
-            ]
-        )
     data.append(
         [
-            "",
             "",
             "",
             "",
@@ -700,14 +739,14 @@ def render_invoice_pdf(preview: BillPreview) -> bytes:
 
     col_widths = [
         8 * mm,
-        55 * mm,
-        18 * mm,
+        72 * mm,
+        20 * mm,
+        22 * mm,
         28 * mm,
-        18 * mm,
-        25 * mm,
-        28 * mm,
+        30 * mm,
     ]
     items_table = Table(data, colWidths=col_widths, repeatRows=1)
+    last_row_index = len(data) - 1
     items_table.setStyle(
         TableStyle(
             [
@@ -717,13 +756,12 @@ def render_invoice_pdf(preview: BillPreview) -> bytes:
                 ("FONTSIZE", (0, 1), (-1, -1), 9),
                 ("ALIGN", (0, 0), (0, -1), "CENTER"),
                 ("ALIGN", (2, 0), (2, -1), "CENTER"),
-                ("ALIGN", (3, 0), (3, -1), "CENTER"),
-                ("ALIGN", (4, 0), (6, -1), "RIGHT"),
+                ("ALIGN", (3, 0), (5, -1), "RIGHT"),
                 ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("GRID", (0, 0), (-1, len(preview.line_items)), 0.25, colors.grey),
+                ("GRID", (0, 0), (-1, item_row_count), 0.25, colors.grey),
                 ("BOX", (0, 0), (-1, -1), 0.5, colors.black),
-                ("LINEABOVE", (5, len(preview.line_items) + 1), (-1, len(preview.line_items) + 1), 0.5, colors.black),
-                ("LINEABOVE", (5, -1), (-1, -1), 0.75, colors.black),
+                ("LINEABOVE", (4, item_row_count + 1), (-1, item_row_count + 1), 0.5, colors.black),
+                ("LINEABOVE", (4, last_row_index), (-1, last_row_index), 0.75, colors.black),
                 ("LEFTPADDING", (0, 0), (-1, -1), 4),
                 ("RIGHTPADDING", (0, 0), (-1, -1), 4),
                 ("TOPPADDING", (0, 0), (-1, -1), 3),
@@ -805,6 +843,7 @@ def _build_preview_for_request(
     req: BillRequest, session: Session
 ) -> BillPreview:
     prices = _get_casing_prices(session)
+    rebore = _get_rebore_price(session)
     try:
         breakdown = compute_cost(
             _list_ranges(session),
@@ -813,6 +852,8 @@ def _build_preview_for_request(
             req.casing_10_pieces,
             prices.price_7in,
             prices.price_10in,
+            job_type=req.job_type,
+            rebore_price_per_foot=rebore.price_per_foot,
         )
     except ValueError as err:
         raise HTTPException(

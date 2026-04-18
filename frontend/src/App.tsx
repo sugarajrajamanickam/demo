@@ -3,7 +3,7 @@ import Login from "./Login";
 import Calculator from "./Calculator";
 import Admin from "./Admin";
 import Bill from "./Bill";
-import { Role, clearToken, fetchMe, getRole, getToken } from "./api";
+import { JobType, Role, clearToken, fetchMe, getRole, getToken } from "./api";
 
 type View = "calculate" | "admin" | "bill";
 
@@ -14,6 +14,7 @@ interface Session {
 
 interface BillContext {
   depth: number;
+  job_type: JobType;
   casing_7_pieces: number;
   casing_10_pieces: number;
 }
@@ -106,8 +107,8 @@ export default function App() {
         {token && view === "calculate" && (
           <Calculator
             onUnauthorized={handleLogout}
-            onDownloadBill={(depth, casing_7_pieces, casing_10_pieces) => {
-              setBillContext({ depth, casing_7_pieces, casing_10_pieces });
+            onDownloadBill={(depth, job_type, casing_7_pieces, casing_10_pieces) => {
+              setBillContext({ depth, job_type, casing_7_pieces, casing_10_pieces });
               setView("bill");
             }}
           />
@@ -118,6 +119,7 @@ export default function App() {
         {token && view === "bill" && billContext && (
           <Bill
             depth={billContext.depth}
+            jobType={billContext.job_type}
             casing7Pieces={billContext.casing_7_pieces}
             casing10Pieces={billContext.casing_10_pieces}
             onBack={() => setView("calculate")}

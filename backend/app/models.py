@@ -73,8 +73,9 @@ class CasingPrice(SQLModel, table=True):
     """Singleton row (id=1) holding admin-set per-piece casing prices.
 
     ``Casing 7"`` and ``Casing 10"`` are charged as ``pieces × price``
-    and added to the grand total *after* tax (same GST treatment as the
-    legacy flat casing fee they replaced).
+    and appear as their own line items in the tax invoice. Casing is
+    non-taxable (GST applies only to the drilling amount); the UI
+    layer adds the two amounts to the grand total after tax.
     """
 
     __tablename__ = "casing_prices"
@@ -82,4 +83,28 @@ class CasingPrice(SQLModel, table=True):
     id: Optional[int] = Field(default=1, primary_key=True)
     price_7in: float = Field(default=0.0, ge=0)
     price_10in: float = Field(default=0.0, ge=0)
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class JobType(str, Enum):
+    """Kind of drilling job.
+
+    * ``NEW_BORE`` — uses the admin-defined rate ladder (per-foot, tiered)
+      plus optional casing add-ons.
+    * ``RE_BORE``  — flat per-foot rate managed by admin in a separate
+      singleton; billed as ``depth × rate`` with GST applied the same
+      way drilling is, and no casing.
+    """
+
+    NEW_BORE = "new_bore"
+    RE_BORE = "re_bore"
+
+
+class ReborePrice(SQLModel, table=True):
+    """Singleton row (id=1) holding the admin-set flat per-foot re-bore rate."""
+
+    __tablename__ = "rebore_prices"
+
+    id: Optional[int] = Field(default=1, primary_key=True)
+    price_per_foot: float = Field(default=0.0, ge=0)
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

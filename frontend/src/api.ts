@@ -75,6 +75,8 @@ async function handle<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }
 
+export type JobType = "new_bore" | "re_bore";
+
 export interface CostSlice {
   start_ft: number;
   end_ft: number;
@@ -85,6 +87,7 @@ export interface CostSlice {
 
 export interface CostBreakdown {
   depth: number;
+  job_type: JobType;
   slices: CostSlice[];
   amount: number;
   casing_7_pieces: number;
@@ -94,6 +97,7 @@ export interface CostBreakdown {
   casing_10_price_per_piece: number;
   casing_10_amount: number;
   casing_fee: number;
+  rebore_price_per_foot: number;
   total: number;
 }
 
@@ -101,11 +105,17 @@ export async function calculateCost(
   depth: number,
   casing_7_pieces: number,
   casing_10_pieces: number,
+  job_type: JobType = "new_bore",
 ): Promise<CostBreakdown> {
   const res = await fetch("/api/cost", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeader() },
-    body: JSON.stringify({ depth, casing_7_pieces, casing_10_pieces }),
+    body: JSON.stringify({
+      depth,
+      job_type,
+      casing_7_pieces,
+      casing_10_pieces,
+    }),
   });
   return handle<CostBreakdown>(res);
 }
@@ -113,6 +123,28 @@ export async function calculateCost(
 export interface CasingPrices {
   price_7in: number;
   price_10in: number;
+}
+
+export interface ReborePrice {
+  price_per_foot: number;
+}
+
+export async function fetchReborePrice(): Promise<ReborePrice> {
+  const res = await fetch("/api/rebore-price", {
+    headers: { ...authHeader() },
+  });
+  return handle<ReborePrice>(res);
+}
+
+export async function updateReborePrice(
+  price: ReborePrice,
+): Promise<ReborePrice> {
+  const res = await fetch("/api/admin/rebore-price", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...authHeader() },
+    body: JSON.stringify(price),
+  });
+  return handle<ReborePrice>(res);
 }
 
 export async function fetchCasingPrices(): Promise<CasingPrices> {
@@ -135,6 +167,7 @@ export async function updateCasingPrices(
 
 export interface BillRequest {
   depth: number;
+  job_type: JobType;
   casing_7_pieces: number;
   casing_10_pieces: number;
   customer_name: string;
@@ -146,11 +179,13 @@ export interface BillRequest {
 }
 
 export interface BillLineItem {
-  start_ft: number;
-  end_ft: number;
-  feet: number;
-  rate_per_ft: number;
+  description: string;
+  hsn_sac: string;
+  qty: number;
+  qty_unit: string;
+  rate: number;
   amount: number;
+  is_taxable: boolean;
 }
 
 export interface BillPreview {
@@ -171,6 +206,7 @@ export interface BillPreview {
   customer_state_code: string | null;
   customer_gstin: string | null;
 
+  job_type: JobType;
   hsn_sac: string;
   description: string;
   depth: number;
@@ -185,6 +221,7 @@ export interface BillPreview {
 
   line_items: BillLineItem[];
   taxable_value: number;
+  non_taxable_total: number;
   is_interstate: boolean;
   cgst_percent: number;
   sgst_percent: number;
