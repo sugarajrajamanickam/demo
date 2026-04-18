@@ -79,7 +79,7 @@ export interface CostSlice {
   start_ft: number;
   end_ft: number;
   feet: number;
-  rate_per_100ft: number;
+  rate_per_ft: number;
   cost: number;
 }
 
@@ -102,6 +102,105 @@ export async function calculateCost(
     body: JSON.stringify({ depth, casing }),
   });
   return handle<CostBreakdown>(res);
+}
+
+export interface BillRequest {
+  depth: number;
+  casing: number;
+  customer_name: string;
+  customer_phone: string;
+  customer_address?: string | null;
+  customer_state?: string | null;
+  customer_state_code?: string | null;
+  customer_gstin?: string | null;
+}
+
+export interface BillLineItem {
+  start_ft: number;
+  end_ft: number;
+  feet: number;
+  rate_per_ft: number;
+  amount: number;
+}
+
+export interface BillPreview {
+  invoice_number: string;
+  invoice_date: string;
+  supplier_name: string;
+  supplier_address_lines: string[];
+  supplier_state: string;
+  supplier_state_code: string;
+  supplier_gstin: string;
+  supplier_phone: string;
+  supplier_email: string;
+
+  customer_name: string;
+  customer_phone: string;
+  customer_address: string | null;
+  customer_state: string | null;
+  customer_state_code: string | null;
+  customer_gstin: string | null;
+
+  hsn_sac: string;
+  description: string;
+  depth: number;
+  casing_fee: number;
+
+  line_items: BillLineItem[];
+  taxable_value: number;
+  is_interstate: boolean;
+  cgst_percent: number;
+  sgst_percent: number;
+  igst_percent: number;
+  cgst_amount: number;
+  sgst_amount: number;
+  igst_amount: number;
+  total_tax: number;
+  grand_total: number;
+  amount_in_words: string;
+}
+
+export async function previewBill(req: BillRequest): Promise<BillPreview> {
+  const res = await fetch("/api/bill/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeader() },
+    body: JSON.stringify(req),
+  });
+  return handle<BillPreview>(res);
+}
+
+/** Fetch the invoice PDF and trigger a browser download. */
+export async function downloadBillPdf(req: BillRequest): Promise<string> {
+  const res = await fetch("/api/bill/pdf", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeader() },
+    body: JSON.stringify(req),
+  });
+  if (res.status === 401) {
+    clearToken();
+    throw new Error("Session expired — please log in again");
+  }
+  if (!res.ok) {
+    let detail = `Download failed (${res.status})`;
+    try {
+      const body = await res.json();
+      if (body && typeof body.detail === "string") detail = body.detail;
+    } catch {
+      // ignore
+    }
+    throw new Error(detail);
+  }
+  const invoiceNumber = res.headers.get("X-Invoice-Number") || "invoice";
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${invoiceNumber.replace(/\//g, "-")}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  return invoiceNumber;
 }
 
 export interface Me {

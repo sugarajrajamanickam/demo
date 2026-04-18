@@ -22,6 +22,7 @@ from .auth import (
 )
 from .db import get_session, init_db
 from .models import User
+from .billing import router as billing_router
 from .password import router as password_router
 from .rates import bootstrap_rate_config, router as rates_router
 
@@ -43,6 +44,11 @@ app.add_middleware(
     allow_credentials=not is_wildcard,
     allow_methods=["*"],
     allow_headers=["*"],
+    # `Content-Disposition` carries the PDF filename; `X-Invoice-Number` is
+    # read by the frontend to name the download. Both must be explicitly
+    # exposed so `fetch().headers.get(...)` sees them in cross-origin dev
+    # mode (Vite :5173 → FastAPI :8000). Same-origin prod is unaffected.
+    expose_headers=["Content-Disposition", "X-Invoice-Number"],
 )
 
 
@@ -96,6 +102,7 @@ def health() -> dict[str, str]:
 app.include_router(admin_router)
 app.include_router(password_router)
 app.include_router(rates_router)
+app.include_router(billing_router)
 
 
 # ---------------------------------------------------------------------------
