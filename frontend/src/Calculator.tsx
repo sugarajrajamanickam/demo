@@ -3,12 +3,13 @@ import { CostBreakdown, calculateCost } from "./api";
 
 interface Props {
   onUnauthorized: () => void;
+  onDownloadBill: (depth: number, casing: number) => void;
 }
 
 const fmt = (n: number): string =>
   Number.isFinite(n) ? n.toLocaleString(undefined, { maximumFractionDigits: 4 }) : "—";
 
-export default function Calculator({ onUnauthorized }: Props) {
+export default function Calculator({ onUnauthorized, onDownloadBill }: Props) {
   const [depth, setDepth] = useState("");
   const [casing, setCasing] = useState("");
   const [result, setResult] = useState<CostBreakdown | null>(null);
@@ -138,6 +139,19 @@ export default function Calculator({ onUnauthorized }: Props) {
                 </dd>
               </div>
             </dl>
+
+            <div className="download-bill-row">
+              <button
+                type="button"
+                className="primary"
+                onClick={() => onDownloadBill(result.depth, result.casing)}
+              >
+                Download bill
+              </button>
+              <p className="muted small">
+                Generates a GST-compliant tax invoice PDF (CGST Rule 46).
+              </p>
+            </div>
           </div>
         )}
       </form>

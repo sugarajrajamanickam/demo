@@ -2,13 +2,19 @@ import { useEffect, useState } from "react";
 import Login from "./Login";
 import Calculator from "./Calculator";
 import Admin from "./Admin";
+import Bill from "./Bill";
 import { Role, clearToken, fetchMe, getRole, getToken } from "./api";
 
-type View = "calculate" | "admin";
+type View = "calculate" | "admin" | "bill";
 
 interface Session {
   username: string;
   role: Role;
+}
+
+interface BillContext {
+  depth: number;
+  casing: number;
 }
 
 export default function App() {
@@ -16,6 +22,7 @@ export default function App() {
   const [role, setRole] = useState<Role | null>(getRole());
   const [session, setSession] = useState<Session | null>(null);
   const [view, setView] = useState<View>("calculate");
+  const [billContext, setBillContext] = useState<BillContext | null>(null);
 
   const handleLogout = () => {
     clearToken();
@@ -23,6 +30,7 @@ export default function App() {
     setRole(null);
     setSession(null);
     setView("calculate");
+    setBillContext(null);
   };
 
   const handleLogin = (t: string, r: Role) => {
@@ -94,9 +102,25 @@ export default function App() {
       </header>
       <main className="app-main">
         {!token && <Login onLogin={handleLogin} />}
-        {token && view === "calculate" && <Calculator onUnauthorized={handleLogout} />}
+        {token && view === "calculate" && (
+          <Calculator
+            onUnauthorized={handleLogout}
+            onDownloadBill={(depth, casing) => {
+              setBillContext({ depth, casing });
+              setView("bill");
+            }}
+          />
+        )}
         {token && view === "admin" && isAdmin && (
           <Admin onUnauthorized={handleLogout} currentUsername={session?.username ?? ""} />
+        )}
+        {token && view === "bill" && billContext && (
+          <Bill
+            depth={billContext.depth}
+            casing={billContext.casing}
+            onBack={() => setView("calculate")}
+            onUnauthorized={handleLogout}
+          />
         )}
       </main>
     </div>

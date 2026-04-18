@@ -22,6 +22,7 @@ from .auth import (
 )
 from .db import get_session, init_db
 from .models import User
+from .billing import router as billing_router
 from .password import router as password_router
 from .rates import bootstrap_rate_config, router as rates_router
 
@@ -96,6 +97,7 @@ def health() -> dict[str, str]:
 app.include_router(admin_router)
 app.include_router(password_router)
 app.include_router(rates_router)
+app.include_router(billing_router)
 
 
 # ---------------------------------------------------------------------------
