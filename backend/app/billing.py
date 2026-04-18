@@ -75,6 +75,11 @@ def _register_invoice_fonts() -> tuple[str, str]:
 
 FONT_REGULAR, FONT_BOLD = _register_invoice_fonts()
 
+# When DejaVu is unavailable we fall back to Helvetica, which lacks the ₹
+# glyph. In that case render rupees as the ASCII "Rs " prefix so amounts are
+# still readable (no black boxes in the PDF).
+_RUPEE_PREFIX = "\u20B9" if FONT_REGULAR == "InvoiceSans" else "Rs "
+
 from sqlmodel import Session
 
 from .auth import get_current_user
@@ -344,7 +349,7 @@ def _format_inr(amount: float) -> str:
         )
         grouped_rest = ",".join(reversed(grouped_rest.split(",")))
         rupees_str = f"{grouped_rest},{last3}"
-    return f"{sign}\u20B9{rupees_str}.{int(paise):02d}"
+    return f"{sign}{_RUPEE_PREFIX}{rupees_str}.{int(paise):02d}"
 
 
 def _make_invoice_number(now: datetime) -> str:
