@@ -13,12 +13,35 @@ interface Props {
   onUnauthorized: () => void;
 }
 
-const fmtINR = (n: number): string =>
-  new Intl.NumberFormat("en-IN", {
-    style: "currency",
-    currency: "INR",
-    maximumFractionDigits: 2,
-  }).format(n);
+/**
+ * Format a rupee amount with a literal `₹` symbol + Indian digit grouping
+ * (`₹1,23,456.78`). We roll our own so the symbol is consistent across
+ * browsers — some locales render `Intl.NumberFormat(currency:"INR")` as
+ * `INR 1,23,456.78` with no actual rupee glyph.
+ */
+const fmtINR = (n: number): string => {
+  if (!Number.isFinite(n)) return "—";
+  const sign = n < 0 ? "-" : "";
+  const abs = Math.abs(n);
+  const [rupeesStr, paiseRaw = "00"] = abs.toFixed(2).split(".");
+  const paise = paiseRaw.padEnd(2, "0").slice(0, 2);
+  // Indian grouping: last 3 digits, then groups of 2.
+  let grouped: string;
+  if (rupeesStr.length <= 3) {
+    grouped = rupeesStr;
+  } else {
+    const last3 = rupeesStr.slice(-3);
+    const rest = rupeesStr.slice(0, -3);
+    const chunks: string[] = [];
+    let i = rest.length;
+    while (i > 0) {
+      chunks.unshift(rest.slice(Math.max(0, i - 2), i));
+      i -= 2;
+    }
+    grouped = `${chunks.join(",")},${last3}`;
+  }
+  return `${sign}₹${grouped}.${paise}`;
+};
 
 const fmtNum = (n: number): string =>
   Number.isFinite(n) ? n.toLocaleString(undefined, { maximumFractionDigits: 4 }) : "—";
@@ -282,22 +305,31 @@ export default function Bill({ depth, casing, onBack, onUnauthorized }: Props) {
 
           <div className="table-wrap">
             <table className="rates-table bill-items">
+              <colgroup>
+                <col className="col-num" />
+                <col className="col-desc" />
+                <col className="col-hsn" />
+                <col className="col-range" />
+                <col className="col-qty" />
+                <col className="col-rate" />
+                <col className="col-amount" />
+              </colgroup>
               <thead>
                 <tr>
-                  <th>#</th>
-                  <th>Description</th>
-                  <th>HSN/SAC</th>
-                  <th>Range</th>
-                  <th>Qty (ft)</th>
-                  <th>Rate / ft</th>
-                  <th>Amount</th>
+                  <th className="cell-num">#</th>
+                  <th className="cell-left">Description</th>
+                  <th className="cell-center">HSN/SAC</th>
+                  <th className="cell-center">Range</th>
+                  <th className="cell-right">Qty (ft)</th>
+                  <th className="cell-right">Rate / ft</th>
+                  <th className="cell-right">Amount</th>
                 </tr>
               </thead>
               <tbody>
                 {preview.line_items.map((item, i) => (
                   <tr key={`${item.start_ft}-${item.end_ft}`}>
-                    <td>{i + 1}</td>
-                    <td>
+                    <td className="cell-num">{i + 1}</td>
+                    <td className="cell-left">
                       {i === 0 ? (
                         <>
                           {preview.description} — depth {fmtNum(preview.depth)} ft
@@ -306,55 +338,55 @@ export default function Bill({ depth, casing, onBack, onUnauthorized }: Props) {
                         ""
                       )}
                     </td>
-                    <td>{i === 0 ? preview.hsn_sac : ""}</td>
-                    <td>
+                    <td className="cell-center">{i === 0 ? preview.hsn_sac : ""}</td>
+                    <td className="cell-center">
                       {item.start_ft} – {item.end_ft}
                     </td>
-                    <td>{fmtNum(item.feet)}</td>
-                    <td>{fmtINR(item.rate_per_ft)}</td>
-                    <td>{fmtINR(item.amount)}</td>
+                    <td className="cell-right">{fmtNum(item.feet)}</td>
+                    <td className="cell-right">{fmtINR(item.rate_per_ft)}</td>
+                    <td className="cell-right">{fmtINR(item.amount)}</td>
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr>
                   <td colSpan={5} />
-                  <th>Taxable Value</th>
-                  <td>
+                  <th className="cell-right">Taxable Value</th>
+                  <td className="cell-right">
                     <strong>{fmtINR(preview.taxable_value)}</strong>
                   </td>
                 </tr>
                 {preview.is_interstate ? (
                   <tr>
                     <td colSpan={5} />
-                    <th>IGST @ {preview.igst_percent}%</th>
-                    <td>{fmtINR(preview.igst_amount)}</td>
+                    <th className="cell-right">IGST @ {preview.igst_percent}%</th>
+                    <td className="cell-right">{fmtINR(preview.igst_amount)}</td>
                   </tr>
                 ) : (
                   <>
                     <tr>
                       <td colSpan={5} />
-                      <th>CGST @ {preview.cgst_percent}%</th>
-                      <td>{fmtINR(preview.cgst_amount)}</td>
+                      <th className="cell-right">CGST @ {preview.cgst_percent}%</th>
+                      <td className="cell-right">{fmtINR(preview.cgst_amount)}</td>
                     </tr>
                     <tr>
                       <td colSpan={5} />
-                      <th>SGST @ {preview.sgst_percent}%</th>
-                      <td>{fmtINR(preview.sgst_amount)}</td>
+                      <th className="cell-right">SGST @ {preview.sgst_percent}%</th>
+                      <td className="cell-right">{fmtINR(preview.sgst_amount)}</td>
                     </tr>
                   </>
                 )}
                 {preview.casing_fee > 0 && (
                   <tr>
                     <td colSpan={5} />
-                    <th>Casing fee</th>
-                    <td>{fmtINR(preview.casing_fee)}</td>
+                    <th className="cell-right">Casing fee</th>
+                    <td className="cell-right">{fmtINR(preview.casing_fee)}</td>
                   </tr>
                 )}
                 <tr className="bill-total-row">
                   <td colSpan={5} />
-                  <th>Grand Total</th>
-                  <td>
+                  <th className="cell-right">Grand Total</th>
+                  <td className="cell-right">
                     <strong>{fmtINR(preview.grand_total)}</strong>
                   </td>
                 </tr>

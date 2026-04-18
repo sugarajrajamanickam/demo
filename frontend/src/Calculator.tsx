@@ -9,6 +9,30 @@ interface Props {
 const fmt = (n: number): string =>
   Number.isFinite(n) ? n.toLocaleString(undefined, { maximumFractionDigits: 4 }) : "—";
 
+/** Rupee formatter with literal `₹` prefix and Indian digit grouping. */
+const fmtINR = (n: number): string => {
+  if (!Number.isFinite(n)) return "—";
+  const sign = n < 0 ? "-" : "";
+  const abs = Math.abs(n);
+  const [rupeesStr, paiseRaw = "00"] = abs.toFixed(2).split(".");
+  const paise = paiseRaw.padEnd(2, "0").slice(0, 2);
+  let grouped: string;
+  if (rupeesStr.length <= 3) {
+    grouped = rupeesStr;
+  } else {
+    const last3 = rupeesStr.slice(-3);
+    const rest = rupeesStr.slice(0, -3);
+    const chunks: string[] = [];
+    let i = rest.length;
+    while (i > 0) {
+      chunks.unshift(rest.slice(Math.max(0, i - 2), i));
+      i -= 2;
+    }
+    grouped = `${chunks.join(",")},${last3}`;
+  }
+  return `${sign}₹${grouped}.${paise}`;
+};
+
 export default function Calculator({ onUnauthorized, onDownloadBill }: Props) {
   const [depth, setDepth] = useState("");
   const [casing, setCasing] = useState("");
@@ -111,8 +135,8 @@ export default function Calculator({ onUnauthorized, onDownloadBill }: Props) {
                         {s.start_ft} – {s.end_ft} ft
                       </td>
                       <td>{fmt(s.feet)}</td>
-                      <td>{fmt(s.rate_per_ft)}</td>
-                      <td>{fmt(s.cost)}</td>
+                      <td>{fmtINR(s.rate_per_ft)}</td>
+                      <td>{fmtINR(s.cost)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -123,19 +147,19 @@ export default function Calculator({ onUnauthorized, onDownloadBill }: Props) {
               <div>
                 <dt>Amount (from depth)</dt>
                 <dd>
-                  <strong>{fmt(result.amount)}</strong>
+                  <strong>{fmtINR(result.amount)}</strong>
                 </dd>
               </div>
               <div>
                 <dt>Casing fee</dt>
                 <dd>
-                  <strong>{fmt(result.casing_fee)}</strong>
+                  <strong>{fmtINR(result.casing_fee)}</strong>
                 </dd>
               </div>
               <div className="sum">
                 <dt>Total</dt>
                 <dd>
-                  <strong>{fmt(result.total)}</strong>
+                  <strong>{fmtINR(result.total)}</strong>
                 </dd>
               </div>
             </dl>

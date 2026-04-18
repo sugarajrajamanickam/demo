@@ -904,18 +904,62 @@ body,
 
 .bill-items {
   width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+
+.bill-items col.col-num { width: 3rem; }
+.bill-items col.col-desc { width: auto; }
+.bill-items col.col-hsn { width: 5.5rem; }
+.bill-items col.col-range { width: 6.5rem; }
+.bill-items col.col-qty { width: 5rem; }
+.bill-items col.col-rate { width: 7rem; }
+.bill-items col.col-amount { width: 8rem; }
+
+.bill-items th,
+.bill-items td {
+  padding: 0.35rem 0.6rem;
+  vertical-align: middle;
+  word-break: break-word;
+}
+
+.bill-items .cell-num { text-align: center; }
+.bill-items .cell-left { text-align: left; }
+.bill-items .cell-center { text-align: center; }
+.bill-items .cell-right {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .bill-items tfoot tr > td,
 .bill-items tfoot tr > th {
-  padding: 0.25rem 0.6rem;
+  padding: 0.3rem 0.6rem;
+  border-top: 1px solid var(--border, #e5e7eb);
 }
 
 .bill-items tfoot tr.bill-total-row > th,
 .bill-items tfoot tr.bill-total-row > td {
   border-top: 2px solid var(--border, #111827);
-  padding-top: 0.5rem;
+  padding-top: 0.55rem;
   font-size: 1.05rem;
+}
+
+.bill-grid > div {
+  min-width: 0;
+}
+
+.bill-grid .bill-meta > div > span.muted {
+  flex: 0 0 auto;
+}
+
+.bill-grid .bill-meta > div > strong {
+  text-align: right;
+  word-break: break-word;
+}
+
+.bill-section > div {
+  padding: 0.1rem 0;
 }
 
 .bill-words {
