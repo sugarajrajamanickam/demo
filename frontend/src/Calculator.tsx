@@ -1,6 +1,5 @@
 import { FormEvent, useState } from "react";
 import { CostBreakdown, calculateCost } from "./api";
-import RatesTable from "./RatesTable";
 
 interface Props {
   onUnauthorized: () => void;
@@ -142,14 +141,6 @@ export default function Calculator({ onUnauthorized }: Props) {
           </div>
         )}
       </form>
-
-      {result && (
-        <section className="card">
-          <h2>Rate ladder</h2>
-          <p className="muted">Reference only — managed by admins.</p>
-          <RatesTable editable={false} onUnauthorized={onUnauthorized} />
-        </section>
-      )}
     </div>
   );
 }
