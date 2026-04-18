@@ -20,6 +20,13 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
+# DejaVu fonts include the ₹ (U+20B9) glyph that the default reportlab
+# Helvetica/Type 1 fonts lack — without this, rupee amounts in the generated
+# tax-invoice PDF render as black boxes.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends fonts-dejavu-core \
+    && rm -rf /var/lib/apt/lists/*
+
 COPY backend/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 

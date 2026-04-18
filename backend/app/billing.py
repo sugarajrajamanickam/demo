@@ -27,10 +27,14 @@ from xml.sax.saxutils import escape as _xml_escape
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import Response
 from pydantic import BaseModel, Field, field_validator
+from pathlib import Path
+
 from reportlab.lib import colors
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.styles import ParagraphStyle, getSampleStyleSheet
 from reportlab.lib.units import mm
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
 from reportlab.platypus import (
     Paragraph,
     SimpleDocTemplate,
@@ -38,6 +42,39 @@ from reportlab.platypus import (
     Table,
     TableStyle,
 )
+
+
+# ---------------------------------------------------------------------------
+# Font registration — reportlab's built-in Helvetica/Type 1 fonts do not
+# contain the ₹ (U+20B9) glyph, so rupee amounts render as black boxes in
+# the PDF. We register DejaVu Sans (shipped via `fonts-dejavu-core` in the
+# Docker image) as the invoice font, and fall back to Helvetica if DejaVu
+# is unavailable (e.g. local dev without the apt package installed) so
+# development doesn't crash — in that fallback case ₹ will be missing from
+# the PDF but all other text still renders.
+# ---------------------------------------------------------------------------
+
+
+def _register_invoice_fonts() -> tuple[str, str]:
+    candidates = (
+        ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"),
+        ("/usr/share/fonts/TTF/DejaVuSans.ttf",
+         "/usr/share/fonts/TTF/DejaVuSans-Bold.ttf"),
+    )
+    for regular_path, bold_path in candidates:
+        if Path(regular_path).exists() and Path(bold_path).exists():
+            try:
+                pdfmetrics.registerFont(TTFont("InvoiceSans", regular_path))
+                pdfmetrics.registerFont(TTFont("InvoiceSans-Bold", bold_path))
+                return "InvoiceSans", "InvoiceSans-Bold"
+            except Exception:  # pragma: no cover - font file corrupt
+                break
+    return "Helvetica", "Helvetica-Bold"
+
+
+FONT_REGULAR, FONT_BOLD = _register_invoice_fonts()
+
 from sqlmodel import Session
 
 from .auth import get_current_user
@@ -396,7 +433,7 @@ def render_invoice_pdf(preview: BillPreview) -> bytes:
     title_style = ParagraphStyle(
         "InvoiceTitle",
         parent=base,
-        fontName="Helvetica-Bold",
+        fontName=FONT_BOLD,
         fontSize=16,
         alignment=1,  # center
         spaceAfter=4,
@@ -404,15 +441,17 @@ def render_invoice_pdf(preview: BillPreview) -> bytes:
     subtitle_style = ParagraphStyle(
         "InvoiceSubtitle",
         parent=base,
-        fontName="Helvetica",
+        fontName=FONT_REGULAR,
         fontSize=9,
         alignment=1,
         textColor=colors.grey,
         spaceAfter=8,
     )
-    small = ParagraphStyle("Small", parent=base, fontSize=9, leading=11)
+    small = ParagraphStyle(
+        "Small", parent=base, fontName=FONT_REGULAR, fontSize=9, leading=11
+    )
     small_bold = ParagraphStyle(
-        "SmallBold", parent=small, fontName="Helvetica-Bold"
+        "SmallBold", parent=small, fontName=FONT_BOLD
     )
 
     # ReportLab's Paragraph parses its input as XML, so every user-provided
@@ -631,7 +670,8 @@ def render_invoice_pdf(preview: BillPreview) -> bytes:
     items_table.setStyle(
         TableStyle(
             [
-                ("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 9),
+                ("FONT", (0, 0), (-1, 0), FONT_BOLD, 9),
+                ("FONT", (0, 1), (-1, -1), FONT_REGULAR, 9),
                 ("BACKGROUND", (0, 0), (-1, 0), colors.lightgrey),
                 ("FONTSIZE", (0, 1), (-1, -1), 9),
                 ("ALIGN", (0, 0), (0, -1), "CENTER"),
