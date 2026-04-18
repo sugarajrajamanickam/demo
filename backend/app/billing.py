@@ -415,6 +415,13 @@ def render_invoice_pdf(preview: BillPreview) -> bytes:
         "SmallBold", parent=small, fontName="Helvetica-Bold"
     )
 
+    # ReportLab's Paragraph parses its input as XML, so every user-provided
+    # string that ends up inside a Paragraph must be XML-escaped first. Stray
+    # `<`, `>`, or `&` characters in names, addresses, states, etc. would
+    # otherwise crash PDF generation.
+    def esc(value: str | None) -> str:
+        return _xml_escape(value) if value else ""
+
     story: List = []
     story.append(Paragraph("TAX INVOICE", title_style))
     story.append(
@@ -438,13 +445,20 @@ def render_invoice_pdf(preview: BillPreview) -> bytes:
             small,
         ),
     ]
+    place_of_supply_state = (
+        esc(preview.customer_state) if preview.customer_state else preview.supplier_state
+    )
+    place_of_supply_code = (
+        esc(preview.customer_state_code)
+        if preview.customer_state_code
+        else preview.supplier_state_code
+    )
     meta_block = [
         Paragraph(f"<b>Invoice No:</b> {preview.invoice_number}", small),
         Paragraph(f"<b>Invoice Date:</b> {preview.invoice_date}", small),
         Paragraph(
-            f"<b>Place of Supply:</b> "
-            f"{preview.customer_state or preview.supplier_state} "
-            f"({preview.customer_state_code or preview.supplier_state_code})",
+            f"<b>Place of Supply:</b> {place_of_supply_state} "
+            f"({place_of_supply_code})",
             small,
         ),
         Paragraph(
@@ -472,13 +486,7 @@ def render_invoice_pdf(preview: BillPreview) -> bytes:
     story.append(header)
     story.append(Spacer(1, 6))
 
-    # Bill-to block. All user-provided strings are XML-escaped before being
-    # handed to ReportLab's Paragraph (which parses its input as XML) so that
-    # a stray `<`, `>`, or `&` in a customer's name or address doesn't crash
-    # PDF generation.
-    def esc(value: str | None) -> str:
-        return _xml_escape(value) if value else ""
-
+    # Bill-to block (user-provided fields escaped via esc() defined above).
     billto_rows: List = [[Paragraph("<b>Bill To</b>", small_bold)]]
     billto_rows.append([Paragraph(esc(preview.customer_name), small_bold)])
     billto_rows.append([Paragraph(f"Phone: {esc(preview.customer_phone)}", small)])
