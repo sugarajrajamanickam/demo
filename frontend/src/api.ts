@@ -147,6 +147,28 @@ export async function updateReborePrice(
   return handle<ReborePrice>(res);
 }
 
+export interface QuotationSettings {
+  validity_days: number;
+}
+
+export async function fetchQuotationSettings(): Promise<QuotationSettings> {
+  const res = await fetch("/api/quotation-settings", {
+    headers: { ...authHeader() },
+  });
+  return handle<QuotationSettings>(res);
+}
+
+export async function updateQuotationSettings(
+  payload: QuotationSettings,
+): Promise<QuotationSettings> {
+  const res = await fetch("/api/admin/quotation-settings", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...authHeader() },
+    body: JSON.stringify(payload),
+  });
+  return handle<QuotationSettings>(res);
+}
+
 export async function fetchCasingPrices(): Promise<CasingPrices> {
   const res = await fetch("/api/casing-prices", {
     headers: { ...authHeader() },
@@ -275,6 +297,87 @@ export async function downloadBillPdf(req: BillRequest): Promise<string> {
   a.remove();
   URL.revokeObjectURL(url);
   return invoiceNumber;
+}
+
+export interface QuotationRequest {
+  depth: number;
+  job_type: JobType;
+  casing_7_pieces: number;
+  casing_10_pieces: number;
+  customer_name: string;
+  customer_phone: string;
+}
+
+export interface QuotationPreview {
+  quotation_number: string;
+  quotation_date: string;
+  valid_until: string;
+  validity_days: number;
+
+  supplier_name: string;
+  supplier_address_lines: string[];
+  supplier_state: string;
+  supplier_state_code: string;
+  supplier_phone: string;
+  supplier_email: string;
+
+  customer_name: string;
+  customer_phone: string;
+
+  job_type: JobType;
+  depth: number;
+
+  line_items: BillLineItem[];
+  subtotal: number;
+  gst_rate_percent: number;
+  gst_note: string;
+}
+
+export async function previewQuotation(
+  req: QuotationRequest,
+): Promise<QuotationPreview> {
+  const res = await fetch("/api/quotation/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeader() },
+    body: JSON.stringify(req),
+  });
+  return handle<QuotationPreview>(res);
+}
+
+export async function downloadQuotationPdf(
+  req: QuotationRequest,
+): Promise<string> {
+  const res = await fetch("/api/quotation/pdf", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeader() },
+    body: JSON.stringify(req),
+  });
+  if (res.status === 401) {
+    clearToken();
+    throw new Error("Session expired — please log in again");
+  }
+  if (!res.ok) {
+    let detail = `Download failed (${res.status})`;
+    try {
+      const body = await res.json();
+      if (body && typeof body.detail === "string") detail = body.detail;
+    } catch {
+      // ignore
+    }
+    throw new Error(detail);
+  }
+  const quotationNumber =
+    res.headers.get("X-Quotation-Number") || "quotation";
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${quotationNumber.replace(/\//g, "-")}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  return quotationNumber;
 }
 
 export interface Me {

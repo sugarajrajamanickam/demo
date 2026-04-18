@@ -3,9 +3,10 @@ import Login from "./Login";
 import Calculator from "./Calculator";
 import Admin from "./Admin";
 import Bill from "./Bill";
+import Quotation from "./Quotation";
 import { JobType, Role, clearToken, fetchMe, getRole, getToken } from "./api";
 
-type View = "calculate" | "admin" | "bill";
+type View = "calculate" | "admin" | "bill" | "quotation";
 
 interface Session {
   username: string;
@@ -25,6 +26,8 @@ export default function App() {
   const [session, setSession] = useState<Session | null>(null);
   const [view, setView] = useState<View>("calculate");
   const [billContext, setBillContext] = useState<BillContext | null>(null);
+  const [quotationContext, setQuotationContext] =
+    useState<BillContext | null>(null);
 
   const handleLogout = () => {
     clearToken();
@@ -33,6 +36,7 @@ export default function App() {
     setSession(null);
     setView("calculate");
     setBillContext(null);
+    setQuotationContext(null);
   };
 
   const handleLogin = (t: string, r: Role) => {
@@ -111,6 +115,15 @@ export default function App() {
               setBillContext({ depth, job_type, casing_7_pieces, casing_10_pieces });
               setView("bill");
             }}
+            onDownloadQuotation={(depth, job_type, casing_7_pieces, casing_10_pieces) => {
+              setQuotationContext({
+                depth,
+                job_type,
+                casing_7_pieces,
+                casing_10_pieces,
+              });
+              setView("quotation");
+            }}
           />
         )}
         {token && view === "admin" && isAdmin && (
@@ -122,6 +135,16 @@ export default function App() {
             jobType={billContext.job_type}
             casing7Pieces={billContext.casing_7_pieces}
             casing10Pieces={billContext.casing_10_pieces}
+            onBack={() => setView("calculate")}
+            onUnauthorized={handleLogout}
+          />
+        )}
+        {token && view === "quotation" && quotationContext && (
+          <Quotation
+            depth={quotationContext.depth}
+            jobType={quotationContext.job_type}
+            casing7Pieces={quotationContext.casing_7_pieces}
+            casing10Pieces={quotationContext.casing_10_pieces}
             onBack={() => setView("calculate")}
             onUnauthorized={handleLogout}
           />
