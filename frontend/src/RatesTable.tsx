@@ -71,7 +71,12 @@ export default function RatesTable({ editable, onUnauthorized }: Props) {
   const addRow = () => {
     setDraft((prev) => {
       const lastEnd = prev.length > 0 ? Number(prev[prev.length - 1].end_ft) : 0;
-      const nextStart = Number.isFinite(lastEnd) ? lastEnd : 0;
+      const nextStart =
+        prev.length === 0
+          ? 0
+          : Number.isFinite(lastEnd)
+            ? lastEnd + 1
+            : 0;
       return [
         ...prev,
         {
@@ -134,9 +139,10 @@ export default function RatesTable({ editable, onUnauthorized }: Props) {
       return;
     }
     for (let i = 1; i < parsed.length; i++) {
-      if (parsed[i].start_ft !== parsed[i - 1].end_ft) {
+      const expected = parsed[i - 1].end_ft + 1;
+      if (parsed[i].start_ft !== expected) {
         setError(
-          `Range ${i + 1} must start where range ${i} ends (${parsed[i - 1].end_ft} ft)`
+          `Range ${i + 1} must start at ${expected} ft (one past range ${i}'s end of ${parsed[i - 1].end_ft} ft)`
         );
         return;
       }
@@ -271,11 +277,15 @@ export default function RatesTable({ editable, onUnauthorized }: Props) {
             )}
           </div>
           <p className="muted rates-hint">
-            Ranges must be contiguous and start at 0 ft. In both modes the
-            rate is charged <strong>per foot</strong> drilled inside the
-            range. <em>Fixed</em> sets an absolute per-foot rate;{" "}
-            <em>step up</em> adds its rate to the previous range's per-foot
-            rate (starting from 0 if it's the first range).
+            First range starts at <code>0</code> ft; each subsequent range
+            must start at <code>prev.end + 1</code> (no gaps, no overlaps).
+            In both modes the rate is charged <strong>per foot</strong>
+            drilled. <em>Fixed</em> sets an absolute per-foot rate for the
+            whole range. <em>Step up</em> partitions the range into 100-ft
+            sub-slices; the Nth sub charges{" "}
+            <code>R_prev + rate × N</code> per foot, where{" "}
+            <code>R_prev</code> is the per-foot rate at the last foot of
+            the previous range (0 for the first range).
           </p>
         </form>
       ) : null}
