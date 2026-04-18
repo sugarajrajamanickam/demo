@@ -75,33 +75,206 @@ async function handle<T>(res: Response): Promise<T> {
   return (await res.json()) as T;
 }
 
+export type JobType = "new_bore" | "re_bore";
+
 export interface CostSlice {
   start_ft: number;
   end_ft: number;
   feet: number;
-  rate_per_100ft: number;
+  rate_per_ft: number;
   cost: number;
 }
 
 export interface CostBreakdown {
   depth: number;
-  casing: number;
+  job_type: JobType;
   slices: CostSlice[];
   amount: number;
+  casing_7_pieces: number;
+  casing_7_price_per_piece: number;
+  casing_7_amount: number;
+  casing_10_pieces: number;
+  casing_10_price_per_piece: number;
+  casing_10_amount: number;
   casing_fee: number;
+  rebore_price_per_foot: number;
   total: number;
 }
 
 export async function calculateCost(
   depth: number,
-  casing: number
+  casing_7_pieces: number,
+  casing_10_pieces: number,
+  job_type: JobType = "new_bore",
 ): Promise<CostBreakdown> {
   const res = await fetch("/api/cost", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeader() },
-    body: JSON.stringify({ depth, casing }),
+    body: JSON.stringify({
+      depth,
+      job_type,
+      casing_7_pieces,
+      casing_10_pieces,
+    }),
   });
   return handle<CostBreakdown>(res);
+}
+
+export interface CasingPrices {
+  price_7in: number;
+  price_10in: number;
+}
+
+export interface ReborePrice {
+  price_per_foot: number;
+}
+
+export async function fetchReborePrice(): Promise<ReborePrice> {
+  const res = await fetch("/api/rebore-price", {
+    headers: { ...authHeader() },
+  });
+  return handle<ReborePrice>(res);
+}
+
+export async function updateReborePrice(
+  price: ReborePrice,
+): Promise<ReborePrice> {
+  const res = await fetch("/api/admin/rebore-price", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...authHeader() },
+    body: JSON.stringify(price),
+  });
+  return handle<ReborePrice>(res);
+}
+
+export async function fetchCasingPrices(): Promise<CasingPrices> {
+  const res = await fetch("/api/casing-prices", {
+    headers: { ...authHeader() },
+  });
+  return handle<CasingPrices>(res);
+}
+
+export async function updateCasingPrices(
+  prices: CasingPrices
+): Promise<CasingPrices> {
+  const res = await fetch("/api/admin/casing-prices", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...authHeader() },
+    body: JSON.stringify(prices),
+  });
+  return handle<CasingPrices>(res);
+}
+
+export interface BillRequest {
+  depth: number;
+  job_type: JobType;
+  casing_7_pieces: number;
+  casing_10_pieces: number;
+  customer_name: string;
+  customer_phone: string;
+  customer_address?: string | null;
+  customer_state?: string | null;
+  customer_state_code?: string | null;
+  customer_gstin?: string | null;
+}
+
+export interface BillLineItem {
+  description: string;
+  hsn_sac: string;
+  qty: number;
+  qty_unit: string;
+  rate: number;
+  amount: number;
+  is_taxable: boolean;
+}
+
+export interface BillPreview {
+  invoice_number: string;
+  invoice_date: string;
+  supplier_name: string;
+  supplier_address_lines: string[];
+  supplier_state: string;
+  supplier_state_code: string;
+  supplier_gstin: string;
+  supplier_phone: string;
+  supplier_email: string;
+
+  customer_name: string;
+  customer_phone: string;
+  customer_address: string | null;
+  customer_state: string | null;
+  customer_state_code: string | null;
+  customer_gstin: string | null;
+
+  job_type: JobType;
+  hsn_sac: string;
+  description: string;
+  depth: number;
+
+  casing_7_pieces: number;
+  casing_7_price_per_piece: number;
+  casing_7_amount: number;
+  casing_10_pieces: number;
+  casing_10_price_per_piece: number;
+  casing_10_amount: number;
+  casing_fee: number;
+
+  line_items: BillLineItem[];
+  taxable_value: number;
+  non_taxable_total: number;
+  is_interstate: boolean;
+  cgst_percent: number;
+  sgst_percent: number;
+  igst_percent: number;
+  cgst_amount: number;
+  sgst_amount: number;
+  igst_amount: number;
+  total_tax: number;
+  grand_total: number;
+  amount_in_words: string;
+}
+
+export async function previewBill(req: BillRequest): Promise<BillPreview> {
+  const res = await fetch("/api/bill/preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeader() },
+    body: JSON.stringify(req),
+  });
+  return handle<BillPreview>(res);
+}
+
+/** Fetch the invoice PDF and trigger a browser download. */
+export async function downloadBillPdf(req: BillRequest): Promise<string> {
+  const res = await fetch("/api/bill/pdf", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeader() },
+    body: JSON.stringify(req),
+  });
+  if (res.status === 401) {
+    clearToken();
+    throw new Error("Session expired — please log in again");
+  }
+  if (!res.ok) {
+    let detail = `Download failed (${res.status})`;
+    try {
+      const body = await res.json();
+      if (body && typeof body.detail === "string") detail = body.detail;
+    } catch {
+      // ignore
+    }
+    throw new Error(detail);
+  }
+  const invoiceNumber = res.headers.get("X-Invoice-Number") || "invoice";
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${invoiceNumber.replace(/\//g, "-")}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+  return invoiceNumber;
 }
 
 export interface Me {

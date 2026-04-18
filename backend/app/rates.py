@@ -1,22 +1,37 @@
-"""Admin-defined rate ranges + per-100-ft cost calculator.
+"""Admin-defined rate ranges + per-foot cost calculator.
 
 Admins define an ordered list of pricing ranges (stored in
-``rate_ranges``). Each range has a ``mode`` — ``fixed`` (flat rate per
-100 ft) or ``step_up`` (previous slice rate + range.rate, repeated per
-100 ft) — plus a numeric ``rate`` whose meaning depends on the mode.
+``rate_ranges``). Each range has a ``mode`` — ``fixed`` or ``step_up``
+— plus a numeric ``rate``.
 
-Validation: ranges must be contiguous, non-overlapping, start at 0 ft,
-and ``start_ft`` / ``end_ft`` must be non-negative multiples of 100 so
-every 100-ft slice lands exactly inside one range.
+Range endpoints are 1-indexed **inclusive** for display: the first
+range starts at ``0`` (a special marker for "from the surface") and
+subsequent ranges must start at ``prev.end_ft + 1`` (no gaps, no
+overlaps). The number of feet covered by a range is therefore
+``r.end_ft - prev.end_ft`` (or ``r.end_ft`` for the first range).
 
-``compute_cost`` walks the admin-defined ranges, expands them into 100-ft
-slices with the correct per-slice rate, and returns the breakdown + total
-for a requested depth. Casing is surfaced as a separate additive fee.
+Every range is partitioned into 100-ft sub-slices starting from its
+first billable foot. The per-foot rate charged in the Nth sub-slice
+(N = 1, 2, …) depends on the mode:
+
+* ``FIXED``    — every sub-slice charges ``r.rate`` per foot.
+* ``STEP_UP``  — sub N charges ``R_prev + r.rate * N`` per foot, where
+  ``R_prev`` is the per-foot rate at the **last foot of the previous
+  range** (or ``0`` if this is the first range).
+
+After a range, ``R_prev`` for the next range is the rate of its
+final sub-slice (``r.rate`` for FIXED, or ``R_prev + r.rate * K``
+where ``K = ceil(range_length / 100)`` for STEP_UP).
+
+``compute_cost`` walks the ladder, clips the final sub-slice to the
+requested depth, and returns the per-100-ft breakdown + total.
+Casing is surfaced as a separate additive fee.
 """
 from __future__ import annotations
 
+import math
 from datetime import datetime, timezone
-from typing import List
+from typing import Iterator, List, Tuple
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field, model_validator
@@ -24,7 +39,14 @@ from sqlmodel import Session, select
 
 from .auth import get_current_user, require_admin
 from .db import engine, get_session
-from .models import RateRange, RateRangeMode, User
+from .models import (
+    CasingPrice,
+    JobType,
+    RateRange,
+    RateRangeMode,
+    ReborePrice,
+    User,
+)
 
 # Hard cap on depth the calculator will accept, both to bound server work
 # and to protect against unbounded admin ranges. 100_000 ft (~19 miles)
@@ -47,10 +69,6 @@ class RateRangeIn(BaseModel):
 
     @model_validator(mode="after")
     def _validate(self) -> "RateRangeIn":
-        if self.start_ft % 100 != 0:
-            raise ValueError("start_ft must be a multiple of 100")
-        if self.end_ft % 100 != 0:
-            raise ValueError("end_ft must be a multiple of 100")
         if self.end_ft <= self.start_ft:
             raise ValueError("end_ft must be greater than start_ft")
         return self
@@ -64,12 +82,18 @@ class RateRangeOut(BaseModel):
 
 
 class DerivedSlice(BaseModel):
-    """One derived 100 ft slice with its computed cost-per-100ft rate."""
+    """One 100-ft sub-slice of a range with its resolved per-foot rate.
+
+    ``start_ft`` / ``end_ft`` are 1-indexed inclusive; a full sub-slice
+    covers 100 feet (``end_ft - start_ft + 1 == 100``). The final
+    sub-slice of a range may be shorter if the range length isn't a
+    multiple of 100.
+    """
 
     start_ft: int
     end_ft: int
-    rate: float
-    mode: RateRangeMode  # mode of the range that produced this slice
+    rate: float  # per-foot rate charged for every foot in this sub-slice
+    mode: RateRangeMode  # mode of the range that produced this sub-slice
 
 
 class RatesResponse(BaseModel):
@@ -90,23 +114,50 @@ class RatesUpdateRequest(BaseModel):
 class CostSlice(BaseModel):
     start_ft: int
     end_ft: int
-    feet: float  # portion of this slice counted (<=100, prorated at the tail)
-    rate_per_100ft: float
+    feet: float  # feet of this range counted toward the depth (clipped at the tail)
+    rate_per_ft: float
     cost: float
 
 
 class CostBreakdown(BaseModel):
     depth: float
-    casing: float
+    job_type: JobType
     slices: List[CostSlice]
-    amount: float
-    casing_fee: float
-    total: float
+    amount: float  # sum of depth slice costs (pre-tax taxable value)
+    casing_7_pieces: int
+    casing_7_price_per_piece: float
+    casing_7_amount: float
+    casing_10_pieces: int
+    casing_10_price_per_piece: float
+    casing_10_amount: float
+    casing_fee: float  # casing_7_amount + casing_10_amount; added after tax
+    rebore_price_per_foot: float  # admin-set flat rate (only meaningful for RE_BORE)
+    total: float  # amount + casing_fee (no tax here — invoice layer adds GST)
 
 
 class CostRequest(BaseModel):
     depth: float = Field(..., ge=0, le=MAX_DEPTH_FT)
-    casing: float = Field(..., ge=0)
+    job_type: JobType = Field(default=JobType.NEW_BORE)
+    casing_7_pieces: int = Field(default=0, ge=0, le=10_000)
+    casing_10_pieces: int = Field(default=0, ge=0, le=10_000)
+
+
+class CasingPricesOut(BaseModel):
+    price_7in: float
+    price_10in: float
+
+
+class CasingPricesUpdate(BaseModel):
+    price_7in: float = Field(..., ge=0)
+    price_10in: float = Field(..., ge=0)
+
+
+class ReborePriceOut(BaseModel):
+    price_per_foot: float
+
+
+class ReborePriceUpdate(BaseModel):
+    price_per_foot: float = Field(..., ge=0)
 
 
 router = APIRouter(tags=["rates"])
@@ -117,99 +168,159 @@ router = APIRouter(tags=["rates"])
 # ---------------------------------------------------------------------------
 
 
-#: Soft cap on how many 100-ft slices the ladder may expand into. Keeps
-#: ``derive_slices`` + ``GET /api/rates`` bounded even if an admin (or
-#: compromised admin token) submits a very wide range. 300 slices covers
-#: 30_000 ft, comfortably beyond the default 3_000 ft display ladder.
-MAX_DERIVED_SLICES: int = 300
+#: Hard cap on how many ranges an admin can define. Keeps
+#: ``GET /api/rates`` and the editor UI bounded even if an admin (or
+#: compromised admin token) submits an absurd ladder.
+MAX_RANGES: int = 50
 
 
 def validate_range_chain(ranges: List[RateRangeIn]) -> None:
-    """Raise ``ValueError`` if the ranges aren't a contiguous chain from 0.
+    """Raise ``ValueError`` if the ranges aren't a contiguous 1-indexed chain.
 
-    Contiguity (``start_ft == prev_end``) alone already rules out overlaps,
-    but we also enforce the weaker ``start_ft >= prev_end`` explicitly first
-    so the error message is unambiguous when ranges overlap (vs. have gaps).
+    The first range must start at ``0`` (surface). Every subsequent range
+    must start at ``prev.end_ft + 1`` so there are no gaps and no overlaps
+    in the billable feet.
     """
     if not ranges:
         raise ValueError("At least one range is required")
     if ranges[0].start_ft != 0:
         raise ValueError("First range must start at 0 ft")
 
-    prev_end = 0
-    for idx, r in enumerate(ranges):
-        if r.start_ft < prev_end:
+    prev_end = ranges[0].end_ft
+    for idx, r in enumerate(ranges[1:], start=2):
+        expected = prev_end + 1
+        if r.start_ft != expected:
             raise ValueError(
-                f"Range {idx + 1} starts at {r.start_ft} ft which overlaps the "
-                f"previous range ending at {prev_end} ft"
-            )
-        if r.start_ft != prev_end:
-            raise ValueError(
-                f"Range {idx + 1} starts at {r.start_ft} ft but the previous range "
-                f"ends at {prev_end} ft (ranges must be contiguous with no gaps)"
+                f"Range {idx} starts at {r.start_ft} ft but must start at "
+                f"{expected} ft (one past the previous range's end of {prev_end} ft)"
             )
         prev_end = r.end_ft
 
-    total_slices = sum((r.end_ft - r.start_ft) // 100 for r in ranges)
-    if total_slices > MAX_DERIVED_SLICES:
+    if len(ranges) > MAX_RANGES:
         raise ValueError(
-            f"Ladder is too long: {total_slices} 100-ft slices "
-            f"(max {MAX_DERIVED_SLICES} = {MAX_DERIVED_SLICES * 100} ft)"
+            f"Too many ranges: {len(ranges)} (max {MAX_RANGES})"
         )
 
 
-def derive_slices(ranges: List[RateRange] | List[RateRangeIn]) -> List[DerivedSlice]:
-    """Expand admin-defined ranges into 100-ft slices with per-slice rates.
+def _iter_subs(
+    ranges: List[RateRange] | List[RateRangeIn],
+) -> Iterator[Tuple[int, int, float, RateRangeMode]]:
+    """Yield ``(sub_begin, sub_end, rate_per_ft, mode)`` for every 100-ft sub-slice.
 
-    Accepts either ORM rows or the request DTO — they share the fields
-    this function cares about.
+    ``sub_begin`` / ``sub_end`` are depths measured from 0 (surface);
+    the sub-slice covers the feet in the half-open interval
+    ``(sub_begin, sub_end]``. In display terms the 1-indexed inclusive
+    label for the sub is ``sub_begin + 1`` – ``sub_end``.
 
-    ``rate`` semantics depend on mode:
-
-    * ``FIXED``   — ``rate`` is cost **per foot**, so the per-100-ft rate
-      surfaced on each derived slice is ``rate * 100``.
-    * ``STEP_UP`` — ``rate`` is a cost-per-100-ft **increment**. Each
-      slice's per-100-ft rate is the previous slice's per-100-ft rate
-      plus ``rate``, starting from 0 if there is no predecessor.
+    ``rate_per_ft`` for a STEP_UP sub is ``R_prev + r.rate * N`` where
+    ``R_prev`` is the per-foot rate at the last foot of the previous
+    range and ``N`` is the 1-indexed sub-slice number within the
+    current range.
     """
-    slices: List[DerivedSlice] = []
-    prev_rate = 0.0
+    prev_end = 0
+    r_prev = 0.0  # rate at the last foot of the previous range
     for r in ranges:
-        start = r.start_ft
-        while start < r.end_ft:
+        begin = prev_end
+        length = r.end_ft - begin
+        if length <= 0:
+            continue
+        total_subs = math.ceil(length / 100)
+        sub_begin = begin
+        for n in range(1, total_subs + 1):
+            sub_end = min(sub_begin + 100, r.end_ft)
             if r.mode == RateRangeMode.FIXED:
-                this_rate = r.rate * 100.0
+                rate_per_ft = float(r.rate)
             else:  # STEP_UP
-                this_rate = prev_rate + r.rate
-            slices.append(
-                DerivedSlice(
-                    start_ft=start,
-                    end_ft=start + 100,
-                    rate=this_rate,
-                    mode=r.mode,
-                )
-            )
-            prev_rate = this_rate
-            start += 100
-    return slices
+                rate_per_ft = r_prev + float(r.rate) * n
+            yield sub_begin, sub_end, rate_per_ft, r.mode
+            sub_begin = sub_end
+        # Update R_prev for the next range — use the per-foot rate at
+        # the last foot of this range (= rate of the final sub-slice).
+        if r.mode == RateRangeMode.FIXED:
+            r_prev = float(r.rate)
+        else:
+            r_prev = r_prev + float(r.rate) * total_subs
+        prev_end = r.end_ft
+
+
+def derive_slices(ranges: List[RateRange] | List[RateRangeIn]) -> List[DerivedSlice]:
+    """Expand the ladder into 100-ft sub-slices with their resolved per-foot rates."""
+    return [
+        DerivedSlice(
+            start_ft=sub_begin + 1,
+            end_ft=sub_end,
+            rate=rate_per_ft,
+            mode=mode,
+        )
+        for sub_begin, sub_end, rate_per_ft, mode in _iter_subs(ranges)
+    ]
 
 
 def compute_cost(
     ranges: List[RateRange] | List[RateRangeIn],
     depth: float,
-    casing: float,
+    casing_7_pieces: int,
+    casing_10_pieces: int,
+    price_7in: float,
+    price_10in: float,
+    *,
+    job_type: JobType = JobType.NEW_BORE,
+    rebore_price_per_foot: float = 0.0,
 ) -> CostBreakdown:
-    """Compute the per-100-ft cost breakdown + totals for ``depth``.
+    """Compute the per-100-ft cost breakdown + casing add-ons for ``depth``.
 
+    Emits one ``CostSlice`` per 100-ft sub-slice of every range; the
+    final sub-slice is truncated at ``depth`` if depth falls inside it.
     The depth must fall inside the admin-defined ladder — if it exceeds
     the last range's ``end_ft`` we surface ``ValueError`` so the caller
     can ask the admin to extend the ladder instead of silently capping
     the cost.
+
+    Casing add-ons: ``casing_N_pieces × price_Nin`` per size, summed
+    into ``casing_fee`` and added to the running total *after* tax
+    (the invoice layer applies GST only to ``amount``).
     """
     if depth < 0:
         raise ValueError("depth must be >= 0")
-    if casing < 0:
-        raise ValueError("casing must be >= 0")
+    if casing_7_pieces < 0 or casing_10_pieces < 0:
+        raise ValueError("casing pieces must be >= 0")
+    if price_7in < 0 or price_10in < 0:
+        raise ValueError("casing prices must be >= 0")
+    if rebore_price_per_foot < 0:
+        raise ValueError("rebore price must be >= 0")
+
+    if job_type == JobType.RE_BORE:
+        # Re-bore: flat per-foot rate, no casing, no rate-ladder tiers.
+        feet = float(depth)
+        rate = float(rebore_price_per_foot)
+        amount = round(feet * rate, 2)
+        slices: List[CostSlice] = []
+        if feet > 0:
+            slices.append(
+                CostSlice(
+                    start_ft=1,
+                    end_ft=max(1, int(feet)),
+                    feet=feet,
+                    rate_per_ft=rate,
+                    cost=amount,
+                )
+            )
+        return CostBreakdown(
+            depth=depth,
+            job_type=JobType.RE_BORE,
+            slices=slices,
+            amount=amount,
+            casing_7_pieces=0,
+            casing_7_price_per_piece=price_7in,
+            casing_7_amount=0.0,
+            casing_10_pieces=0,
+            casing_10_price_per_piece=price_10in,
+            casing_10_amount=0.0,
+            casing_fee=0.0,
+            rebore_price_per_foot=rate,
+            total=amount,
+        )
+
     if not ranges:
         raise ValueError("Rate ladder is empty — admin must define at least one range")
 
@@ -220,35 +331,45 @@ def compute_cost(
             "Ask an admin to add a range covering greater depths."
         )
 
-    derived = derive_slices(ranges)
     cost_slices: List[CostSlice] = []
-    remaining = float(depth)
     amount = 0.0
-    for s in derived:
-        if remaining <= 0:
+    for sub_begin, sub_end, rate_per_ft, _mode in _iter_subs(ranges):
+        if depth <= sub_begin:
             break
-        feet = 100.0 if remaining >= 100 else remaining
-        cost = round(feet / 100.0 * s.rate, 4)
+        effective_end = min(float(sub_end), float(depth))
+        feet = effective_end - float(sub_begin)
+        if feet <= 0:
+            continue
+        cost = round(feet * rate_per_ft, 4)
         cost_slices.append(
             CostSlice(
-                start_ft=s.start_ft,
-                end_ft=s.start_ft + int(feet) if feet < 100 else s.end_ft,
+                start_ft=sub_begin + 1,
+                end_ft=max(sub_begin + 1, int(effective_end)),
                 feet=feet,
-                rate_per_100ft=s.rate,
+                rate_per_ft=rate_per_ft,
                 cost=cost,
             )
         )
         amount += cost
-        remaining -= feet
 
     amount = round(amount, 2)
-    total = round(amount + casing, 2)
+    c7_amount = round(casing_7_pieces * price_7in, 2)
+    c10_amount = round(casing_10_pieces * price_10in, 2)
+    casing_fee = round(c7_amount + c10_amount, 2)
+    total = round(amount + casing_fee, 2)
     return CostBreakdown(
         depth=depth,
-        casing=casing,
+        job_type=JobType.NEW_BORE,
         slices=cost_slices,
         amount=amount,
-        casing_fee=casing,
+        casing_7_pieces=casing_7_pieces,
+        casing_7_price_per_piece=price_7in,
+        casing_7_amount=c7_amount,
+        casing_10_pieces=casing_10_pieces,
+        casing_10_price_per_piece=price_10in,
+        casing_10_amount=c10_amount,
+        casing_fee=casing_fee,
+        rebore_price_per_foot=rebore_price_per_foot,
         total=total,
     )
 
@@ -259,29 +380,73 @@ def compute_cost(
 
 
 DEFAULT_BOOTSTRAP_RANGES: List[RateRangeIn] = [
-    RateRangeIn(start_ft=0, end_ft=300, mode=RateRangeMode.FIXED, rate=0.0),
-    RateRangeIn(start_ft=300, end_ft=1000, mode=RateRangeMode.STEP_UP, rate=10.0),
-    RateRangeIn(start_ft=1000, end_ft=3000, mode=RateRangeMode.STEP_UP, rate=100.0),
+    RateRangeIn(start_ft=0, end_ft=300, mode=RateRangeMode.FIXED, rate=100.0),
+    RateRangeIn(start_ft=301, end_ft=1000, mode=RateRangeMode.STEP_UP, rate=50.0),
+    RateRangeIn(start_ft=1001, end_ft=3000, mode=RateRangeMode.STEP_UP, rate=100.0),
 ]
 
 
+#: Default per-piece prices seeded on first boot (admin-editable thereafter).
+DEFAULT_CASING_PRICE_7IN: float = 0.0
+DEFAULT_CASING_PRICE_10IN: float = 0.0
+DEFAULT_REBORE_PRICE_PER_FOOT: float = 0.0
+
+
 def bootstrap_rate_config() -> None:
-    """Seed the default ladder on first boot so the UI has something to show."""
+    """Seed the default ladder + casing prices + rebore price on first boot."""
     with Session(engine) as session:
         existing = session.exec(select(RateRange)).first()
-        if existing is not None:
-            return
-        for idx, r in enumerate(DEFAULT_BOOTSTRAP_RANGES):
+        if existing is None:
+            for idx, r in enumerate(DEFAULT_BOOTSTRAP_RANGES):
+                session.add(
+                    RateRange(
+                        start_ft=r.start_ft,
+                        end_ft=r.end_ft,
+                        mode=r.mode,
+                        rate=r.rate,
+                        sort_index=idx,
+                    )
+                )
+        if session.get(CasingPrice, 1) is None:
             session.add(
-                RateRange(
-                    start_ft=r.start_ft,
-                    end_ft=r.end_ft,
-                    mode=r.mode,
-                    rate=r.rate,
-                    sort_index=idx,
+                CasingPrice(
+                    id=1,
+                    price_7in=DEFAULT_CASING_PRICE_7IN,
+                    price_10in=DEFAULT_CASING_PRICE_10IN,
+                )
+            )
+        if session.get(ReborePrice, 1) is None:
+            session.add(
+                ReborePrice(
+                    id=1,
+                    price_per_foot=DEFAULT_REBORE_PRICE_PER_FOOT,
                 )
             )
         session.commit()
+
+
+def _get_casing_prices(session: Session) -> CasingPrice:
+    row = session.get(CasingPrice, 1)
+    if row is None:
+        row = CasingPrice(
+            id=1,
+            price_7in=DEFAULT_CASING_PRICE_7IN,
+            price_10in=DEFAULT_CASING_PRICE_10IN,
+        )
+        session.add(row)
+        session.commit()
+        session.refresh(row)
+    return row
+
+
+def _get_rebore_price(session: Session) -> ReborePrice:
+    row = session.get(ReborePrice, 1)
+    if row is None:
+        row = ReborePrice(id=1, price_per_foot=DEFAULT_REBORE_PRICE_PER_FOOT)
+        session.add(row)
+        session.commit()
+        session.refresh(row)
+    return row
 
 
 def _list_ranges(session: Session) -> List[RateRange]:
@@ -349,8 +514,79 @@ def calculate_cost(
     _: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> CostBreakdown:
-    """Compute amount + casing + total for a given depth."""
+    """Compute drilling amount + casing add-ons + pre-tax total.
+
+    For ``job_type=RE_BORE`` the rate ladder and casing inputs are
+    ignored; billing is a flat ``depth * rebore_price_per_foot`` with
+    GST applied later by the invoice layer.
+    """
+    prices = _get_casing_prices(session)
+    rebore = _get_rebore_price(session)
     try:
-        return compute_cost(_list_ranges(session), payload.depth, payload.casing)
+        return compute_cost(
+            _list_ranges(session),
+            payload.depth,
+            payload.casing_7_pieces,
+            payload.casing_10_pieces,
+            prices.price_7in,
+            prices.price_10in,
+            job_type=payload.job_type,
+            rebore_price_per_foot=rebore.price_per_foot,
+        )
     except ValueError as err:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
+
+
+@router.get("/api/casing-prices", response_model=CasingPricesOut)
+def get_casing_prices(
+    _: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> CasingPricesOut:
+    """Return the admin-set per-piece prices for 7\" and 10\" casing."""
+    prices = _get_casing_prices(session)
+    return CasingPricesOut(
+        price_7in=prices.price_7in, price_10in=prices.price_10in
+    )
+
+
+@router.put("/api/admin/casing-prices", response_model=CasingPricesOut)
+def update_casing_prices(
+    payload: CasingPricesUpdate,
+    _: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> CasingPricesOut:
+    """Admin-only: set per-piece prices for 7\" and 10\" casing."""
+    row = _get_casing_prices(session)
+    row.price_7in = payload.price_7in
+    row.price_10in = payload.price_10in
+    row.updated_at = datetime.now(timezone.utc)
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return CasingPricesOut(price_7in=row.price_7in, price_10in=row.price_10in)
+
+
+@router.get("/api/rebore-price", response_model=ReborePriceOut)
+def get_rebore_price(
+    _: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> ReborePriceOut:
+    """Return the admin-set flat per-foot re-bore rate."""
+    row = _get_rebore_price(session)
+    return ReborePriceOut(price_per_foot=row.price_per_foot)
+
+
+@router.put("/api/admin/rebore-price", response_model=ReborePriceOut)
+def update_rebore_price(
+    payload: ReborePriceUpdate,
+    _: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> ReborePriceOut:
+    """Admin-only: set the flat per-foot re-bore rate."""
+    row = _get_rebore_price(session)
+    row.price_per_foot = payload.price_per_foot
+    row.updated_at = datetime.now(timezone.utc)
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return ReborePriceOut(price_per_foot=row.price_per_foot)
