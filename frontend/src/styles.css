@@ -121,6 +121,67 @@ body,
   /* screen readers skip the glyph; `required` attr carries semantics. */
 }
 
+/* Job-type picker: two side-by-side tiles, each its own bordered card. */
+.job-type-group {
+  border: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.job-type-group > legend {
+  padding: 0;
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+.job-type-group .job-type-options {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+
+.job-type-group .radio-option {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  cursor: pointer;
+  user-select: none;
+  transition: border-color 120ms ease, box-shadow 120ms ease,
+    background 120ms ease;
+  font-size: 0.95rem;
+  font-weight: 500;
+  color: var(--text, #111);
+}
+
+.job-type-group .radio-option:hover {
+  border-color: var(--primary);
+}
+
+.job-type-group .radio-option input[type="radio"] {
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--primary);
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.job-type-group .radio-option:has(input[type="radio"]:checked) {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.18);
+  background: rgba(37, 99, 235, 0.05);
+}
+
 .card input {
   font-size: 1rem;
   padding: 0.65rem 0.85rem;

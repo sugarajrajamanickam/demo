@@ -137,26 +137,28 @@ export default function Calculator({ onUnauthorized, onDownloadBill }: Props) {
         <h2>Calculate</h2>
         <fieldset className="job-type-group">
           <legend>Job type</legend>
-          <label className="radio-option">
-            <input
-              type="radio"
-              name="job_type"
-              value="new_bore"
-              checked={jobType === "new_bore"}
-              onChange={() => handleJobTypeChange("new_bore")}
-            />
-            <span>New Bore</span>
-          </label>
-          <label className="radio-option">
-            <input
-              type="radio"
-              name="job_type"
-              value="re_bore"
-              checked={jobType === "re_bore"}
-              onChange={() => handleJobTypeChange("re_bore")}
-            />
-            <span>Re-Bore</span>
-          </label>
+          <div className="job-type-options">
+            <label className="radio-option">
+              <input
+                type="radio"
+                name="job_type"
+                value="new_bore"
+                checked={jobType === "new_bore"}
+                onChange={() => handleJobTypeChange("new_bore")}
+              />
+              <span>New Bore</span>
+            </label>
+            <label className="radio-option">
+              <input
+                type="radio"
+                name="job_type"
+                value="re_bore"
+                checked={jobType === "re_bore"}
+                onChange={() => handleJobTypeChange("re_bore")}
+              />
+              <span>Re-Bore</span>
+            </label>
+          </div>
         </fieldset>
         <label>
           <span className="field-label-text">
