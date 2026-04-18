@@ -85,28 +85,58 @@ export interface CostSlice {
 
 export interface CostBreakdown {
   depth: number;
-  casing: number;
   slices: CostSlice[];
   amount: number;
+  casing_7_pieces: number;
+  casing_7_price_per_piece: number;
+  casing_7_amount: number;
+  casing_10_pieces: number;
+  casing_10_price_per_piece: number;
+  casing_10_amount: number;
   casing_fee: number;
   total: number;
 }
 
 export async function calculateCost(
   depth: number,
-  casing: number
+  casing_7_pieces: number,
+  casing_10_pieces: number,
 ): Promise<CostBreakdown> {
   const res = await fetch("/api/cost", {
     method: "POST",
     headers: { "Content-Type": "application/json", ...authHeader() },
-    body: JSON.stringify({ depth, casing }),
+    body: JSON.stringify({ depth, casing_7_pieces, casing_10_pieces }),
   });
   return handle<CostBreakdown>(res);
 }
 
+export interface CasingPrices {
+  price_7in: number;
+  price_10in: number;
+}
+
+export async function fetchCasingPrices(): Promise<CasingPrices> {
+  const res = await fetch("/api/casing-prices", {
+    headers: { ...authHeader() },
+  });
+  return handle<CasingPrices>(res);
+}
+
+export async function updateCasingPrices(
+  prices: CasingPrices
+): Promise<CasingPrices> {
+  const res = await fetch("/api/admin/casing-prices", {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...authHeader() },
+    body: JSON.stringify(prices),
+  });
+  return handle<CasingPrices>(res);
+}
+
 export interface BillRequest {
   depth: number;
-  casing: number;
+  casing_7_pieces: number;
+  casing_10_pieces: number;
   customer_name: string;
   customer_phone: string;
   customer_address?: string | null;
@@ -144,6 +174,13 @@ export interface BillPreview {
   hsn_sac: string;
   description: string;
   depth: number;
+
+  casing_7_pieces: number;
+  casing_7_price_per_piece: number;
+  casing_7_amount: number;
+  casing_10_pieces: number;
+  casing_10_price_per_piece: number;
+  casing_10_amount: number;
   casing_fee: number;
 
   line_items: BillLineItem[];

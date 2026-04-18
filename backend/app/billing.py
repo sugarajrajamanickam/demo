@@ -80,7 +80,13 @@ from sqlmodel import Session
 from .auth import get_current_user
 from .db import get_session
 from .models import User
-from .rates import CostBreakdown, MAX_DEPTH_FT, _list_ranges, compute_cost
+from .rates import (
+    CostBreakdown,
+    MAX_DEPTH_FT,
+    _get_casing_prices,
+    _list_ranges,
+    compute_cost,
+)
 
 router = APIRouter(tags=["billing"])
 
@@ -139,7 +145,8 @@ class BillRequest(BaseModel):
     """Payload the UI sends to generate a bill PDF."""
 
     depth: float = Field(..., ge=0, le=MAX_DEPTH_FT)
-    casing: float = Field(..., ge=0)
+    casing_7_pieces: int = Field(default=0, ge=0, le=10_000)
+    casing_10_pieces: int = Field(default=0, ge=0, le=10_000)
     customer_name: str = Field(..., min_length=1, max_length=120)
     customer_phone: str = Field(..., min_length=7, max_length=20)
     customer_address: str | None = Field(default=None, max_length=240)
@@ -197,6 +204,15 @@ class BillPreview(BaseModel):
     hsn_sac: str
     description: str
     depth: float
+
+    # Casing add-ons (post-tax, no GST). ``casing_fee`` is the sum of
+    # both sizes; the UI + PDF render individual rows when pieces > 0.
+    casing_7_pieces: int
+    casing_7_price_per_piece: float
+    casing_7_amount: float
+    casing_10_pieces: int
+    casing_10_price_per_piece: float
+    casing_10_amount: float
     casing_fee: float
 
     line_items: List[BillLineItem]
@@ -393,6 +409,12 @@ def build_preview(
         hsn_sac=HSN_SAC_CODE,
         description=SERVICE_DESCRIPTION,
         depth=breakdown.depth,
+        casing_7_pieces=breakdown.casing_7_pieces,
+        casing_7_price_per_piece=breakdown.casing_7_price_per_piece,
+        casing_7_amount=breakdown.casing_7_amount,
+        casing_10_pieces=breakdown.casing_10_pieces,
+        casing_10_price_per_piece=breakdown.casing_10_price_per_piece,
+        casing_10_amount=breakdown.casing_10_amount,
         casing_fee=breakdown.casing_fee,
         line_items=line_items,
         taxable_value=taxable_value,
@@ -633,7 +655,7 @@ def render_invoice_pdf(preview: BillPreview) -> bytes:
                 _format_inr(preview.sgst_amount),
             ]
         )
-    if preview.casing_fee:
+    if preview.casing_7_amount:
         data.append(
             [
                 "",
@@ -641,8 +663,22 @@ def render_invoice_pdf(preview: BillPreview) -> bytes:
                 "",
                 "",
                 "",
-                "Casing fee",
-                _format_inr(preview.casing_fee),
+                f'Casing 7" ({preview.casing_7_pieces} × '
+                f"{_format_inr(preview.casing_7_price_per_piece)})",
+                _format_inr(preview.casing_7_amount),
+            ]
+        )
+    if preview.casing_10_amount:
+        data.append(
+            [
+                "",
+                "",
+                "",
+                "",
+                "",
+                f'Casing 10" ({preview.casing_10_pieces} × '
+                f"{_format_inr(preview.casing_10_price_per_piece)})",
+                _format_inr(preview.casing_10_amount),
             ]
         )
     data.append(
@@ -763,8 +799,16 @@ def render_invoice_pdf(preview: BillPreview) -> bytes:
 def _build_preview_for_request(
     req: BillRequest, session: Session
 ) -> BillPreview:
+    prices = _get_casing_prices(session)
     try:
-        breakdown = compute_cost(_list_ranges(session), req.depth, req.casing)
+        breakdown = compute_cost(
+            _list_ranges(session),
+            req.depth,
+            req.casing_7_pieces,
+            req.casing_10_pieces,
+            prices.price_7in,
+            prices.price_10in,
+        )
     except ValueError as err:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail=str(err)

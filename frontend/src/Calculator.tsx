@@ -1,9 +1,18 @@
-import { FormEvent, useState } from "react";
-import { CostBreakdown, calculateCost } from "./api";
+import { FormEvent, useEffect, useState } from "react";
+import {
+  CasingPrices,
+  CostBreakdown,
+  calculateCost,
+  fetchCasingPrices,
+} from "./api";
 
 interface Props {
   onUnauthorized: () => void;
-  onDownloadBill: (depth: number, casing: number) => void;
+  onDownloadBill: (
+    depth: number,
+    casing7Pieces: number,
+    casing10Pieces: number,
+  ) => void;
 }
 
 const fmt = (n: number): string =>
@@ -35,10 +44,35 @@ const fmtINR = (n: number): string => {
 
 export default function Calculator({ onUnauthorized, onDownloadBill }: Props) {
   const [depth, setDepth] = useState("");
-  const [casing, setCasing] = useState("");
+  const [casing7, setCasing7] = useState("");
+  const [casing10, setCasing10] = useState("");
+  const [prices, setPrices] = useState<CasingPrices | null>(null);
   const [result, setResult] = useState<CostBreakdown | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchCasingPrices()
+      .then((p) => {
+        if (!cancelled) setPrices(p);
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        const message = err instanceof Error ? err.message : "Request failed";
+        if (message.toLowerCase().includes("session expired")) onUnauthorized();
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [onUnauthorized]);
+
+  const parsePieces = (raw: string): number | null => {
+    if (raw.trim() === "") return 0;
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) return null;
+    return n;
+  };
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -46,19 +80,24 @@ export default function Calculator({ onUnauthorized, onDownloadBill }: Props) {
     setResult(null);
 
     const depthNum = Number(depth);
-    const casingNum = Number(casing);
     if (!Number.isFinite(depthNum) || depthNum < 0) {
       setError("Depth must be a non-negative number");
       return;
     }
-    if (!Number.isFinite(casingNum) || casingNum < 0) {
-      setError("Casing fee must be a non-negative number");
+    const c7 = parsePieces(casing7);
+    const c10 = parsePieces(casing10);
+    if (c7 === null) {
+      setError("Casing 7\" pieces must be a non-negative whole number");
+      return;
+    }
+    if (c10 === null) {
+      setError("Casing 10\" pieces must be a non-negative whole number");
       return;
     }
 
     setBusy(true);
     try {
-      const data = await calculateCost(depthNum, casingNum);
+      const data = await calculateCost(depthNum, c7, c10);
       setResult(data);
     } catch (err) {
       const message = err instanceof Error ? err.message : "Request failed";
@@ -90,18 +129,36 @@ export default function Calculator({ onUnauthorized, onDownloadBill }: Props) {
           />
         </label>
         <label>
-          <span className="field-label-text">
-            Casing fee
-            <span className="required-star" aria-hidden="true">*</span>
-          </span>
+          <span className="field-label-text">Casing 7" (pieces)</span>
           <input
             type="number"
-            step="any"
+            step="1"
             min="0"
-            value={casing}
-            onChange={(e) => setCasing(e.target.value)}
-            required
+            value={casing7}
+            onChange={(e) => setCasing7(e.target.value)}
+            placeholder="0"
           />
+          {prices && (
+            <span className="muted small">
+              Admin rate: {fmtINR(prices.price_7in)} / piece
+            </span>
+          )}
+        </label>
+        <label>
+          <span className="field-label-text">Casing 10" (pieces)</span>
+          <input
+            type="number"
+            step="1"
+            min="0"
+            value={casing10}
+            onChange={(e) => setCasing10(e.target.value)}
+            placeholder="0"
+          />
+          {prices && (
+            <span className="muted small">
+              Admin rate: {fmtINR(prices.price_10in)} / piece
+            </span>
+          )}
         </label>
         {error && <p className="error">{error}</p>}
         <button type="submit" disabled={busy}>
@@ -150,12 +207,28 @@ export default function Calculator({ onUnauthorized, onDownloadBill }: Props) {
                   <strong>{fmtINR(result.amount)}</strong>
                 </dd>
               </div>
-              <div>
-                <dt>Casing fee</dt>
-                <dd>
-                  <strong>{fmtINR(result.casing_fee)}</strong>
-                </dd>
-              </div>
+              {result.casing_7_pieces > 0 && (
+                <div>
+                  <dt>
+                    Casing 7" ({result.casing_7_pieces} ×{" "}
+                    {fmtINR(result.casing_7_price_per_piece)})
+                  </dt>
+                  <dd>
+                    <strong>{fmtINR(result.casing_7_amount)}</strong>
+                  </dd>
+                </div>
+              )}
+              {result.casing_10_pieces > 0 && (
+                <div>
+                  <dt>
+                    Casing 10" ({result.casing_10_pieces} ×{" "}
+                    {fmtINR(result.casing_10_price_per_piece)})
+                  </dt>
+                  <dd>
+                    <strong>{fmtINR(result.casing_10_amount)}</strong>
+                  </dd>
+                </div>
+              )}
               <div className="sum">
                 <dt>Total</dt>
                 <dd>
@@ -168,7 +241,13 @@ export default function Calculator({ onUnauthorized, onDownloadBill }: Props) {
               <button
                 type="button"
                 className="primary"
-                onClick={() => onDownloadBill(result.depth, result.casing)}
+                onClick={() =>
+                  onDownloadBill(
+                    result.depth,
+                    result.casing_7_pieces,
+                    result.casing_10_pieces,
+                  )
+                }
               >
                 Download bill
               </button>

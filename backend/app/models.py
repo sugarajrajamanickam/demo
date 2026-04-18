@@ -67,3 +67,19 @@ class RateRange(SQLModel, table=True):
     rate: float = Field(ge=0)
     sort_index: int = Field(default=0)  # preserves admin-provided order
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class CasingPrice(SQLModel, table=True):
+    """Singleton row (id=1) holding admin-set per-piece casing prices.
+
+    ``Casing 7"`` and ``Casing 10"`` are charged as ``pieces × price``
+    and added to the grand total *after* tax (same GST treatment as the
+    legacy flat casing fee they replaced).
+    """
+
+    __tablename__ = "casing_prices"
+
+    id: Optional[int] = Field(default=1, primary_key=True)
+    price_7in: float = Field(default=0.0, ge=0)
+    price_10in: float = Field(default=0.0, ge=0)
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

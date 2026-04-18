@@ -32,8 +32,17 @@ def _database_url() -> str:
     url = os.getenv("APP_DATABASE_URL")
     if url:
         return url
-    db_path = Path(os.getenv("APP_DATABASE_PATH", "/app/data/app.db"))
-    db_path.parent.mkdir(parents=True, exist_ok=True)
+    default_db = "/app/data/app.db"
+    # Fall back to a writable tmp path when the default parent isn't
+    # writable (e.g. local dev outside Docker or the auto-generated
+    # `deploy backend` container which runs as non-root and has no
+    # /app/data). ``init_db()`` creates the tables on first startup.
+    try:
+        db_path = Path(os.getenv("APP_DATABASE_PATH", default_db))
+        db_path.parent.mkdir(parents=True, exist_ok=True)
+    except (PermissionError, OSError):
+        db_path = Path("/tmp/app.db")
+        db_path.parent.mkdir(parents=True, exist_ok=True)
     return f"sqlite:///{db_path}"
 
 

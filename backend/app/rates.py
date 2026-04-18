@@ -39,7 +39,7 @@ from sqlmodel import Session, select
 
 from .auth import get_current_user, require_admin
 from .db import engine, get_session
-from .models import RateRange, RateRangeMode, User
+from .models import CasingPrice, RateRange, RateRangeMode, User
 
 # Hard cap on depth the calculator will accept, both to bound server work
 # and to protect against unbounded admin ranges. 100_000 ft (~19 miles)
@@ -114,16 +114,32 @@ class CostSlice(BaseModel):
 
 class CostBreakdown(BaseModel):
     depth: float
-    casing: float
     slices: List[CostSlice]
-    amount: float
-    casing_fee: float
-    total: float
+    amount: float  # sum of depth slice costs (pre-tax taxable value)
+    casing_7_pieces: int
+    casing_7_price_per_piece: float
+    casing_7_amount: float
+    casing_10_pieces: int
+    casing_10_price_per_piece: float
+    casing_10_amount: float
+    casing_fee: float  # casing_7_amount + casing_10_amount; added after tax
+    total: float  # amount + casing_fee (no tax here — invoice layer adds GST)
 
 
 class CostRequest(BaseModel):
     depth: float = Field(..., ge=0, le=MAX_DEPTH_FT)
-    casing: float = Field(..., ge=0)
+    casing_7_pieces: int = Field(default=0, ge=0, le=10_000)
+    casing_10_pieces: int = Field(default=0, ge=0, le=10_000)
+
+
+class CasingPricesOut(BaseModel):
+    price_7in: float
+    price_10in: float
+
+
+class CasingPricesUpdate(BaseModel):
+    price_7in: float = Field(..., ge=0)
+    price_10in: float = Field(..., ge=0)
 
 
 router = APIRouter(tags=["rates"])
@@ -225,9 +241,12 @@ def derive_slices(ranges: List[RateRange] | List[RateRangeIn]) -> List[DerivedSl
 def compute_cost(
     ranges: List[RateRange] | List[RateRangeIn],
     depth: float,
-    casing: float,
+    casing_7_pieces: int,
+    casing_10_pieces: int,
+    price_7in: float,
+    price_10in: float,
 ) -> CostBreakdown:
-    """Compute the per-100-ft cost breakdown + totals for ``depth``.
+    """Compute the per-100-ft cost breakdown + casing add-ons for ``depth``.
 
     Emits one ``CostSlice`` per 100-ft sub-slice of every range; the
     final sub-slice is truncated at ``depth`` if depth falls inside it.
@@ -235,11 +254,17 @@ def compute_cost(
     the last range's ``end_ft`` we surface ``ValueError`` so the caller
     can ask the admin to extend the ladder instead of silently capping
     the cost.
+
+    Casing add-ons: ``casing_N_pieces × price_Nin`` per size, summed
+    into ``casing_fee`` and added to the running total *after* tax
+    (the invoice layer applies GST only to ``amount``).
     """
     if depth < 0:
         raise ValueError("depth must be >= 0")
-    if casing < 0:
-        raise ValueError("casing must be >= 0")
+    if casing_7_pieces < 0 or casing_10_pieces < 0:
+        raise ValueError("casing pieces must be >= 0")
+    if price_7in < 0 or price_10in < 0:
+        raise ValueError("casing prices must be >= 0")
     if not ranges:
         raise ValueError("Rate ladder is empty — admin must define at least one range")
 
@@ -272,13 +297,21 @@ def compute_cost(
         amount += cost
 
     amount = round(amount, 2)
-    total = round(amount + casing, 2)
+    c7_amount = round(casing_7_pieces * price_7in, 2)
+    c10_amount = round(casing_10_pieces * price_10in, 2)
+    casing_fee = round(c7_amount + c10_amount, 2)
+    total = round(amount + casing_fee, 2)
     return CostBreakdown(
         depth=depth,
-        casing=casing,
         slices=cost_slices,
         amount=amount,
-        casing_fee=casing,
+        casing_7_pieces=casing_7_pieces,
+        casing_7_price_per_piece=price_7in,
+        casing_7_amount=c7_amount,
+        casing_10_pieces=casing_10_pieces,
+        casing_10_price_per_piece=price_10in,
+        casing_10_amount=c10_amount,
+        casing_fee=casing_fee,
         total=total,
     )
 
@@ -295,23 +328,49 @@ DEFAULT_BOOTSTRAP_RANGES: List[RateRangeIn] = [
 ]
 
 
+#: Default per-piece prices seeded on first boot (admin-editable thereafter).
+DEFAULT_CASING_PRICE_7IN: float = 0.0
+DEFAULT_CASING_PRICE_10IN: float = 0.0
+
+
 def bootstrap_rate_config() -> None:
-    """Seed the default ladder on first boot so the UI has something to show."""
+    """Seed the default ladder + casing prices on first boot."""
     with Session(engine) as session:
         existing = session.exec(select(RateRange)).first()
-        if existing is not None:
-            return
-        for idx, r in enumerate(DEFAULT_BOOTSTRAP_RANGES):
+        if existing is None:
+            for idx, r in enumerate(DEFAULT_BOOTSTRAP_RANGES):
+                session.add(
+                    RateRange(
+                        start_ft=r.start_ft,
+                        end_ft=r.end_ft,
+                        mode=r.mode,
+                        rate=r.rate,
+                        sort_index=idx,
+                    )
+                )
+        if session.get(CasingPrice, 1) is None:
             session.add(
-                RateRange(
-                    start_ft=r.start_ft,
-                    end_ft=r.end_ft,
-                    mode=r.mode,
-                    rate=r.rate,
-                    sort_index=idx,
+                CasingPrice(
+                    id=1,
+                    price_7in=DEFAULT_CASING_PRICE_7IN,
+                    price_10in=DEFAULT_CASING_PRICE_10IN,
                 )
             )
         session.commit()
+
+
+def _get_casing_prices(session: Session) -> CasingPrice:
+    row = session.get(CasingPrice, 1)
+    if row is None:
+        row = CasingPrice(
+            id=1,
+            price_7in=DEFAULT_CASING_PRICE_7IN,
+            price_10in=DEFAULT_CASING_PRICE_10IN,
+        )
+        session.add(row)
+        session.commit()
+        session.refresh(row)
+    return row
 
 
 def _list_ranges(session: Session) -> List[RateRange]:
@@ -379,8 +438,45 @@ def calculate_cost(
     _: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> CostBreakdown:
-    """Compute amount + casing + total for a given depth."""
+    """Compute drilling amount + casing add-ons + pre-tax total."""
+    prices = _get_casing_prices(session)
     try:
-        return compute_cost(_list_ranges(session), payload.depth, payload.casing)
+        return compute_cost(
+            _list_ranges(session),
+            payload.depth,
+            payload.casing_7_pieces,
+            payload.casing_10_pieces,
+            prices.price_7in,
+            prices.price_10in,
+        )
     except ValueError as err:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(err))
+
+
+@router.get("/api/casing-prices", response_model=CasingPricesOut)
+def get_casing_prices(
+    _: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> CasingPricesOut:
+    """Return the admin-set per-piece prices for 7\" and 10\" casing."""
+    prices = _get_casing_prices(session)
+    return CasingPricesOut(
+        price_7in=prices.price_7in, price_10in=prices.price_10in
+    )
+
+
+@router.put("/api/admin/casing-prices", response_model=CasingPricesOut)
+def update_casing_prices(
+    payload: CasingPricesUpdate,
+    _: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> CasingPricesOut:
+    """Admin-only: set per-piece prices for 7\" and 10\" casing."""
+    row = _get_casing_prices(session)
+    row.price_7in = payload.price_7in
+    row.price_10in = payload.price_10in
+    row.updated_at = datetime.now(timezone.utc)
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return CasingPricesOut(price_7in=row.price_7in, price_10in=row.price_10in)

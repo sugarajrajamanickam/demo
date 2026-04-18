@@ -8,7 +8,8 @@ import {
 
 interface Props {
   depth: number;
-  casing: number;
+  casing7Pieces: number;
+  casing10Pieces: number;
   onBack: () => void;
   onUnauthorized: () => void;
 }
@@ -54,7 +55,13 @@ const fmtNum = (n: number): string =>
  * byte-for-byte (except for the timestamp inside the invoice number, which
  * is re-generated on the PDF call — acceptable for a demo).
  */
-export default function Bill({ depth, casing, onBack, onUnauthorized }: Props) {
+export default function Bill({
+  depth,
+  casing7Pieces,
+  casing10Pieces,
+  onBack,
+  onUnauthorized,
+}: Props) {
   const [customerName, setCustomerName] = useState("");
   const [customerPhone, setCustomerPhone] = useState("");
   const [customerAddress, setCustomerAddress] = useState("");
@@ -69,7 +76,8 @@ export default function Bill({ depth, casing, onBack, onUnauthorized }: Props) {
 
   const buildRequest = (): BillRequest => ({
     depth,
-    casing,
+    casing_7_pieces: casing7Pieces,
+    casing_10_pieces: casing10Pieces,
     customer_name: customerName.trim(),
     customer_phone: customerPhone.trim(),
     customer_address: customerAddress.trim() || null,
@@ -139,9 +147,14 @@ export default function Bill({ depth, casing, onBack, onUnauthorized }: Props) {
         <h2>Generate tax invoice</h2>
         <p className="muted small">
           Depth <strong>{fmtNum(depth)} ft</strong>
-          {casing > 0 && (
+          {casing7Pieces > 0 && (
             <>
-              {" · "}Casing fee <strong>{fmtINR(casing)}</strong>
+              {" · "}Casing 7" <strong>{casing7Pieces} pcs</strong>
+            </>
+          )}
+          {casing10Pieces > 0 && (
+            <>
+              {" · "}Casing 10" <strong>{casing10Pieces} pcs</strong>
             </>
           )}
         </p>
@@ -376,11 +389,28 @@ export default function Bill({ depth, casing, onBack, onUnauthorized }: Props) {
                     </tr>
                   </>
                 )}
-                {preview.casing_fee > 0 && (
+                {preview.casing_7_amount > 0 && (
                   <tr>
                     <td colSpan={5} />
-                    <th className="cell-right">Casing fee</th>
-                    <td className="cell-right">{fmtINR(preview.casing_fee)}</td>
+                    <th className="cell-right">
+                      Casing 7" ({preview.casing_7_pieces} ×{" "}
+                      {fmtINR(preview.casing_7_price_per_piece)})
+                    </th>
+                    <td className="cell-right">
+                      {fmtINR(preview.casing_7_amount)}
+                    </td>
+                  </tr>
+                )}
+                {preview.casing_10_amount > 0 && (
+                  <tr>
+                    <td colSpan={5} />
+                    <th className="cell-right">
+                      Casing 10" ({preview.casing_10_pieces} ×{" "}
+                      {fmtINR(preview.casing_10_price_per_piece)})
+                    </th>
+                    <td className="cell-right">
+                      {fmtINR(preview.casing_10_amount)}
+                    </td>
                   </tr>
                 )}
                 <tr className="bill-total-row">

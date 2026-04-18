@@ -14,7 +14,8 @@ interface Session {
 
 interface BillContext {
   depth: number;
-  casing: number;
+  casing_7_pieces: number;
+  casing_10_pieces: number;
 }
 
 export default function App() {
@@ -105,8 +106,8 @@ export default function App() {
         {token && view === "calculate" && (
           <Calculator
             onUnauthorized={handleLogout}
-            onDownloadBill={(depth, casing) => {
-              setBillContext({ depth, casing });
+            onDownloadBill={(depth, casing_7_pieces, casing_10_pieces) => {
+              setBillContext({ depth, casing_7_pieces, casing_10_pieces });
               setView("bill");
             }}
           />
@@ -117,7 +118,8 @@ export default function App() {
         {token && view === "bill" && billContext && (
           <Bill
             depth={billContext.depth}
-            casing={billContext.casing}
+            casing7Pieces={billContext.casing_7_pieces}
+            casing10Pieces={billContext.casing_10_pieces}
             onBack={() => setView("calculate")}
             onUnauthorized={handleLogout}
           />
