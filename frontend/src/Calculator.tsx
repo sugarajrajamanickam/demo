@@ -10,6 +10,7 @@ import {
   fetchReborePrice,
   listCustomers,
 } from "./api";
+import CustomerCombobox from "./CustomerCombobox";
 
 interface Props {
   onUnauthorized: () => void;
@@ -74,7 +75,6 @@ export default function Calculator({
   const [busy, setBusy] = useState(false);
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [customerId, setCustomerId] = useState<number | null>(null);
-  const [customerFilter, setCustomerFilter] = useState("");
 
   useEffect(() => {
     let cancelled = false;
@@ -100,15 +100,13 @@ export default function Calculator({
     [customers, customerId],
   );
 
-  const filteredCustomers = useMemo(() => {
-    const q = customerFilter.trim().toLowerCase();
-    if (!q) return customers;
-    return customers.filter(
-      (c) => c.name.toLowerCase().includes(q) || c.phone.toLowerCase().includes(q),
-    );
-  }, [customers, customerFilter]);
-
-  const handlePickCustomer = (c: Customer) => {
+  const handlePickCustomer = (c: Customer | null) => {
+    if (!c) {
+      setCustomerId(null);
+      setResult(null);
+      setError(null);
+      return;
+    }
     setCustomerId(c.id);
     setJobType(c.bore_type);
     setResult(null);
@@ -184,70 +182,42 @@ export default function Calculator({
           <legend>
             Customer<span className="required-star" aria-hidden="true">*</span>
           </legend>
-          {customers.length === 0 ? (
-            <p className="muted small">
-              No customers yet.{" "}
-              <button
-                type="button"
-                className="btn-link"
-                onClick={onGoToCustomers}
-              >
-                Add one on the Customers page →
-              </button>
-            </p>
-          ) : (
-            <>
-              <input
-                type="search"
-                placeholder="Filter by name or phone…"
-                value={customerFilter}
-                onChange={(e) => setCustomerFilter(e.target.value)}
-                data-testid="customer-picker-search"
-              />
-              <select
-                value={customerId ?? ""}
-                onChange={(e) => {
-                  const id = e.target.value ? Number(e.target.value) : null;
-                  if (id === null) {
-                    setCustomerId(null);
-                    return;
-                  }
-                  const c = customers.find((x) => x.id === id);
-                  if (c) handlePickCustomer(c);
-                }}
-                size={Math.min(6, Math.max(3, filteredCustomers.length))}
-                data-testid="customer-picker-select"
-              >
-                {filteredCustomers.length === 0 && (
-                  <option disabled value="">
-                    No customers match
-                  </option>
-                )}
-                {filteredCustomers.map((c) => (
-                  <option key={c.id} value={c.id}>
-                    {c.name} — {c.phone} (
-                    {c.bore_type === "re_bore" ? "Re-Bore" : "New Bore"})
-                  </option>
-                ))}
-              </select>
-              {selectedCustomer && (
-                <p className="muted small" data-testid="customer-picker-selected">
-                  Selected: <strong>{selectedCustomer.name}</strong> ·{" "}
-                  {selectedCustomer.phone} · requested{" "}
-                  {selectedCustomer.date_of_request || "—"}
-                </p>
-              )}
+          <CustomerCombobox
+            customers={customers}
+            selected={selectedCustomer}
+            onSelect={handlePickCustomer}
+            data-testid="customer-picker"
+            noCustomersHint={
               <p className="muted small">
-                Need a new customer?{" "}
+                No customers yet.{" "}
                 <button
                   type="button"
-                  className="btn-link"
+                  className="btn-link inline-link"
                   onClick={onGoToCustomers}
                 >
-                  Go to Customers →
+                  Add one on the Customers page →
                 </button>
               </p>
-            </>
+            }
+          />
+          {selectedCustomer && (
+            <p className="muted small" data-testid="customer-picker-selected">
+              Selected: <strong>{selectedCustomer.name}</strong> ·{" "}
+              {selectedCustomer.phone} · requested{" "}
+              {selectedCustomer.date_of_request || "—"}
+            </p>
+          )}
+          {customers.length > 0 && (
+            <p className="muted small">
+              Need a new customer?{" "}
+              <button
+                type="button"
+                className="btn-link inline-link"
+                onClick={onGoToCustomers}
+              >
+                Go to Customers →
+              </button>
+            </p>
           )}
         </fieldset>
         <fieldset className="job-type-group">

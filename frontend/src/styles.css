@@ -1727,3 +1727,298 @@ body,
   padding: 0.25rem 0.6rem;
   font-size: 0.85rem;
 }
+
+/* ----- Customer combobox ------------------------------------------------ */
+.customer-combobox {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+}
+
+.customer-combobox.empty {
+  padding: 0.25rem 0;
+}
+
+.customer-combobox-input-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.customer-combobox-input-row input {
+  width: 100%;
+  padding: 0.55rem 2rem 0.55rem 0.75rem;
+  border: 1px solid var(--border, #e4e4e7);
+  border-radius: 8px;
+  font-size: 0.95rem;
+  background: #fff;
+  color: var(--text);
+}
+
+.customer-combobox-input-row input:focus {
+  outline: none;
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.2);
+}
+
+.customer-combobox-clear {
+  position: absolute;
+  right: 0.4rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 1.5rem;
+  height: 1.5rem;
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.customer-combobox-clear:hover {
+  background: #f3f4f6;
+  color: var(--text);
+}
+
+.customer-combobox-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(15, 23, 42, 0.12);
+  list-style: none;
+  margin: 0;
+  padding: 0.25rem;
+  z-index: 20;
+}
+
+.customer-combobox-option {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  grid-template-areas:
+    "name phone"
+    "type phone";
+  gap: 0.15rem 0.75rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  line-height: 1.25;
+}
+
+.customer-combobox-option.active,
+.customer-combobox-option:hover {
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.customer-combobox-option.selected {
+  background: rgba(37, 99, 235, 0.14);
+}
+
+.customer-combobox-option-name {
+  grid-area: name;
+  font-weight: 600;
+  color: var(--text);
+}
+
+.customer-combobox-option-phone {
+  grid-area: phone;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  align-self: center;
+}
+
+.customer-combobox-option-boretype {
+  grid-area: type;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.customer-combobox-empty {
+  padding: 0.6rem 0.7rem;
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+/* Inline version of btn-link for paragraphs (no background, no border). */
+.btn-link.inline-link {
+  background: transparent;
+  color: var(--primary);
+  border: none;
+  padding: 0;
+  font-size: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.btn-link.inline-link:hover {
+  background: transparent;
+  color: var(--primary-hover);
+}
+
+/* ===== Mobile responsive rules ========================================= */
+
+/* Tablet and narrower */
+@media (max-width: 900px) {
+  .app-header {
+    flex-wrap: wrap;
+    gap: 0.6rem;
+    padding: 0.75rem 1rem;
+  }
+  .header-left {
+    width: 100%;
+    gap: 0.75rem;
+  }
+  .header-right {
+    width: 100%;
+    justify-content: space-between;
+  }
+  .header-nav {
+    width: 100%;
+    overflow-x: auto;
+    flex-wrap: nowrap;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 0.15rem;
+  }
+  .header-nav .nav-btn {
+    flex: 0 0 auto;
+    white-space: nowrap;
+  }
+  .dashboard-filter-row {
+    flex-wrap: wrap;
+  }
+  .admin {
+    max-width: 100%;
+  }
+}
+
+/* Phone */
+@media (max-width: 640px) {
+  .app-main {
+    padding: 0.75rem;
+    align-items: stretch;
+  }
+  .card {
+    max-width: none;
+    padding: 1rem;
+  }
+  .job-type-group .job-type-options {
+    grid-template-columns: 1fr;
+  }
+  .admin-form {
+    grid-template-columns: 1fr;
+  }
+
+  /* All data tables should horizontally scroll rather than squishing. */
+  .table-wrap,
+  .dashboard-results,
+  .dashboard-detail-row > td {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .customers-table,
+  .dashboard-table,
+  .bills-table,
+  .payments-table,
+  .admin-list table,
+  .rates-table,
+  .cost-breakdown,
+  .dashboard-bills-table {
+    min-width: 540px;
+    font-size: 0.85rem;
+  }
+
+  /* Customers + Dashboard + Payments filter rows stack vertically. */
+  .customers-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+  .dashboard-filters,
+  .dashboard-filter-row {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+  .dashboard-fieldset {
+    flex-wrap: wrap;
+  }
+  .dashboard-field-date input {
+    min-width: 0;
+    width: 100%;
+  }
+  .dashboard-pagination {
+    flex-direction: column;
+    gap: 0.5rem;
+    align-items: stretch;
+  }
+  .dashboard-pagination-controls {
+    justify-content: space-between;
+  }
+
+  /* Bill / Quotation layouts: stack grids on mobile. */
+  .bill-grid {
+    grid-template-columns: 1fr;
+  }
+  .customer-totals,
+  .bill-amounts {
+    grid-template-columns: 1fr;
+  }
+  .bill-form .bill-row,
+  .form-row {
+    flex-direction: column;
+  }
+
+  /* Modal full-width on small screens. */
+  .modal {
+    max-width: none;
+  }
+  .modal-backdrop {
+    padding: 0.5rem;
+  }
+
+  /* Row action buttons wrap. */
+  .row-actions {
+    justify-content: flex-start;
+  }
+
+  /* Payments card - wrap meta nicely */
+  .customer-meta {
+    gap: 0.5rem;
+  }
+
+  /* Customer combobox dropdown stays contained. */
+  .customer-combobox-list {
+    max-height: 220px;
+  }
+  .customer-combobox-option {
+    grid-template-columns: 1fr;
+    grid-template-areas:
+      "name"
+      "phone"
+      "type";
+  }
+  .customer-combobox-option-phone {
+    align-self: start;
+  }
+}
+
+/* Very narrow phones */
+@media (max-width: 400px) {
+  .app-header h1 {
+    font-size: 1rem;
+  }
+  .session-info {
+    font-size: 0.75rem;
+  }
+  .nav-btn {
+    padding: 0.3rem 0.6rem;
+    font-size: 0.82rem;
+  }
+}
