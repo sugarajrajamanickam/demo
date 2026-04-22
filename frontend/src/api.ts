@@ -465,12 +465,15 @@ export interface DashboardCustomerRow {
   bill_count: number;
   payment_count: number;
   status: DashboardRowStatus;
+  last_activity_at: string;
   bills: DashboardBill[];
 }
 
 export interface DashboardResponse {
   customers: DashboardCustomerRow[];
   total_customers: number;
+  limit: number;
+  offset: number;
 }
 
 export interface DashboardFilters {
@@ -480,6 +483,8 @@ export interface DashboardFilters {
   bill_to?: string;
   payment_from?: string;
   payment_to?: string;
+  limit?: number;
+  offset?: number;
 }
 
 function buildDashboardQuery(filters: DashboardFilters): string {
@@ -490,7 +495,66 @@ function buildDashboardQuery(filters: DashboardFilters): string {
   if (filters.bill_to) params.set("bill_to", filters.bill_to);
   if (filters.payment_from) params.set("payment_from", filters.payment_from);
   if (filters.payment_to) params.set("payment_to", filters.payment_to);
+  if (filters.limit != null) params.set("limit", String(filters.limit));
+  if (filters.offset != null) params.set("offset", String(filters.offset));
   return params.toString();
+}
+
+export interface StatementCustomer {
+  id: number;
+  name: string;
+  phone: string;
+  address?: string | null;
+  state?: string | null;
+  gstin?: string | null;
+}
+
+export interface StatementBill {
+  id: number;
+  invoice_number: string;
+  invoice_date: string;
+  job_type: string;
+  depth: number;
+  casing_7_pieces: number;
+  casing_10_pieces: number;
+  taxable_value: number;
+  total_tax: number;
+  non_taxable_total: number;
+  grand_total: number;
+  paid_total: number;
+  outstanding: number;
+}
+
+export interface StatementPayment {
+  id: number;
+  bill_id: number;
+  invoice_number: string;
+  amount: number;
+  paid_at: string;
+  mode: string;
+  note?: string | null;
+}
+
+export interface StatementResponse {
+  customer: StatementCustomer;
+  bills: StatementBill[];
+  payments: StatementPayment[];
+  total_billed: number;
+  total_paid: number;
+  outstanding: number;
+  generated_at: string;
+}
+
+export async function fetchCustomerStatementJson(
+  customerId: number,
+  filters: Omit<DashboardFilters, "q" | "status" | "limit" | "offset">,
+): Promise<StatementResponse> {
+  const query = buildDashboardQuery(filters);
+  const url = query
+    ? `/api/dashboard/customers/${customerId}/statement?${query}`
+    : `/api/dashboard/customers/${customerId}/statement`;
+  const res = await fetch(url, { headers: { ...authHeader() } });
+  return handle<StatementResponse>(res);
 }
 
 export async function fetchDashboardCustomers(
