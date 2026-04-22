@@ -299,6 +299,146 @@ export async function downloadBillPdf(req: BillRequest): Promise<string> {
   return invoiceNumber;
 }
 
+// --- Customers & payments ---------------------------------------------------
+
+export type PaymentMode = "cash" | "upi" | "card" | "bank_transfer" | "cheque" | "other";
+
+export const PAYMENT_MODES: { value: PaymentMode; label: string }[] = [
+  { value: "cash", label: "Cash" },
+  { value: "upi", label: "UPI" },
+  { value: "card", label: "Card" },
+  { value: "bank_transfer", label: "Bank transfer" },
+  { value: "cheque", label: "Cheque" },
+  { value: "other", label: "Other" },
+];
+
+export interface Customer {
+  id: number;
+  name: string;
+  phone: string;
+  address: string | null;
+  state: string | null;
+  state_code: string | null;
+  gstin: string | null;
+  created_at: string;
+}
+
+export interface CustomerCreate {
+  name: string;
+  phone: string;
+  address?: string | null;
+  state?: string | null;
+  state_code?: string | null;
+  gstin?: string | null;
+}
+
+export interface BillSummary {
+  id: number;
+  invoice_number: string;
+  invoice_date: string;
+  job_type: string;
+  depth: number;
+  grand_total: number;
+  paid_total: number;
+  outstanding: number;
+}
+
+export interface CustomerWithBills {
+  customer: Customer;
+  bills: BillSummary[];
+  total_billed: number;
+  total_paid: number;
+  total_outstanding: number;
+}
+
+export interface PaymentRecord {
+  id: number;
+  bill_id: number;
+  amount: number;
+  paid_at: string;
+  mode: PaymentMode;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface BillWithPayments {
+  bill: BillSummary;
+  customer: Customer;
+  payments: PaymentRecord[];
+}
+
+export interface PaymentCreate {
+  amount: number;
+  paid_at?: string | null;
+  mode: PaymentMode;
+  note?: string | null;
+}
+
+export async function searchCustomers(q: string, limit = 20): Promise<Customer[]> {
+  const params = new URLSearchParams();
+  if (q.trim()) params.set("q", q.trim());
+  params.set("limit", String(limit));
+  const res = await fetch(`/api/customers/search?${params.toString()}`, {
+    headers: { ...authHeader() },
+  });
+  return handle<Customer[]>(res);
+}
+
+export async function createCustomer(payload: CustomerCreate): Promise<Customer> {
+  const res = await fetch("/api/customers", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeader() },
+    body: JSON.stringify(payload),
+  });
+  return handle<Customer>(res);
+}
+
+export async function fetchCustomer(id: number): Promise<CustomerWithBills> {
+  const res = await fetch(`/api/customers/${id}`, { headers: { ...authHeader() } });
+  return handle<CustomerWithBills>(res);
+}
+
+export async function updateCustomer(id: number, payload: CustomerCreate): Promise<Customer> {
+  const res = await fetch(`/api/customers/${id}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...authHeader() },
+    body: JSON.stringify(payload),
+  });
+  return handle<Customer>(res);
+}
+
+export async function fetchBillWithPayments(billId: number): Promise<BillWithPayments> {
+  const res = await fetch(`/api/bills/${billId}`, { headers: { ...authHeader() } });
+  return handle<BillWithPayments>(res);
+}
+
+export async function addPayment(billId: number, payload: PaymentCreate): Promise<PaymentRecord> {
+  const res = await fetch(`/api/bills/${billId}/payments`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...authHeader() },
+    body: JSON.stringify(payload),
+  });
+  return handle<PaymentRecord>(res);
+}
+
+export async function updatePayment(paymentId: number, payload: PaymentCreate): Promise<PaymentRecord> {
+  const res = await fetch(`/api/payments/${paymentId}`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...authHeader() },
+    body: JSON.stringify(payload),
+  });
+  return handle<PaymentRecord>(res);
+}
+
+export async function deletePayment(paymentId: number): Promise<void> {
+  const res = await fetch(`/api/payments/${paymentId}`, {
+    method: "DELETE",
+    headers: { ...authHeader() },
+  });
+  await handle<void>(res);
+}
+
 export interface QuotationRequest {
   depth: number;
   job_type: JobType;

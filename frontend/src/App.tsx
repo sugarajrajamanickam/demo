@@ -3,10 +3,11 @@ import Login from "./Login";
 import Calculator from "./Calculator";
 import Admin from "./Admin";
 import Bill from "./Bill";
+import Payments from "./Payments";
 import Quotation from "./Quotation";
 import { JobType, Role, clearToken, fetchMe, getRole, getToken } from "./api";
 
-type View = "calculate" | "admin" | "bill" | "quotation";
+type View = "calculate" | "admin" | "bill" | "payments" | "quotation";
 
 interface Session {
   username: string;
@@ -81,6 +82,13 @@ export default function App() {
               >
                 Calculate
               </button>
+              <button
+                type="button"
+                className={`nav-btn ${view === "payments" ? "active" : ""}`}
+                onClick={() => setView("payments")}
+              >
+                Payments
+              </button>
               {isAdmin && (
                 <button
                   type="button"
@@ -128,6 +136,9 @@ export default function App() {
         )}
         {token && view === "admin" && isAdmin && (
           <Admin onUnauthorized={handleLogout} currentUsername={session?.username ?? ""} />
+        )}
+        {token && view === "payments" && (
+          <Payments onUnauthorized={handleLogout} />
         )}
         {token && view === "bill" && billContext && (
           <Bill
