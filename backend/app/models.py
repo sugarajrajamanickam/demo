@@ -185,3 +185,18 @@ class Payment(SQLModel, table=True):
     note: Optional[str] = Field(default=None, max_length=240)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+
+class QuotationSettings(SQLModel, table=True):
+    """Singleton row (id=1) holding admin-configurable quotation settings.
+
+    ``validity_days`` is the number of days a quotation is valid for once
+    issued; rendered on the quotation as a "Valid until" date calculated
+    from the quote date.
+    """
+
+    __tablename__ = "quotation_settings"
+
+    id: Optional[int] = Field(default=1, primary_key=True)
+    validity_days: int = Field(default=30, ge=1, le=3650)
+    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

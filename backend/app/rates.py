@@ -42,6 +42,7 @@ from .db import engine, get_session
 from .models import (
     CasingPrice,
     JobType,
+    QuotationSettings,
     RateRange,
     RateRangeMode,
     ReborePrice,
@@ -158,6 +159,14 @@ class ReborePriceOut(BaseModel):
 
 class ReborePriceUpdate(BaseModel):
     price_per_foot: float = Field(..., ge=0)
+
+
+class QuotationSettingsOut(BaseModel):
+    validity_days: int
+
+
+class QuotationSettingsUpdate(BaseModel):
+    validity_days: int = Field(..., ge=1, le=3650)
 
 
 router = APIRouter(tags=["rates"])
@@ -390,6 +399,7 @@ DEFAULT_BOOTSTRAP_RANGES: List[RateRangeIn] = [
 DEFAULT_CASING_PRICE_7IN: float = 0.0
 DEFAULT_CASING_PRICE_10IN: float = 0.0
 DEFAULT_REBORE_PRICE_PER_FOOT: float = 0.0
+DEFAULT_QUOTATION_VALIDITY_DAYS: int = 30
 
 
 def bootstrap_rate_config() -> None:
@@ -422,6 +432,13 @@ def bootstrap_rate_config() -> None:
                     price_per_foot=DEFAULT_REBORE_PRICE_PER_FOOT,
                 )
             )
+        if session.get(QuotationSettings, 1) is None:
+            session.add(
+                QuotationSettings(
+                    id=1,
+                    validity_days=DEFAULT_QUOTATION_VALIDITY_DAYS,
+                )
+            )
         session.commit()
 
 
@@ -443,6 +460,18 @@ def _get_rebore_price(session: Session) -> ReborePrice:
     row = session.get(ReborePrice, 1)
     if row is None:
         row = ReborePrice(id=1, price_per_foot=DEFAULT_REBORE_PRICE_PER_FOOT)
+        session.add(row)
+        session.commit()
+        session.refresh(row)
+    return row
+
+
+def _get_quotation_settings(session: Session) -> QuotationSettings:
+    row = session.get(QuotationSettings, 1)
+    if row is None:
+        row = QuotationSettings(
+            id=1, validity_days=DEFAULT_QUOTATION_VALIDITY_DAYS
+        )
         session.add(row)
         session.commit()
         session.refresh(row)
@@ -590,3 +619,31 @@ def update_rebore_price(
     session.commit()
     session.refresh(row)
     return ReborePriceOut(price_per_foot=row.price_per_foot)
+
+
+@router.get("/api/quotation-settings", response_model=QuotationSettingsOut)
+def get_quotation_settings(
+    _: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> QuotationSettingsOut:
+    """Return the admin-set quotation validity (in days)."""
+    row = _get_quotation_settings(session)
+    return QuotationSettingsOut(validity_days=row.validity_days)
+
+
+@router.put(
+    "/api/admin/quotation-settings", response_model=QuotationSettingsOut
+)
+def update_quotation_settings(
+    payload: QuotationSettingsUpdate,
+    _: User = Depends(require_admin),
+    session: Session = Depends(get_session),
+) -> QuotationSettingsOut:
+    """Admin-only: set the quotation validity period (days)."""
+    row = _get_quotation_settings(session)
+    row.validity_days = payload.validity_days
+    row.updated_at = datetime.now(timezone.utc)
+    session.add(row)
+    session.commit()
+    session.refresh(row)
+    return QuotationSettingsOut(validity_days=row.validity_days)

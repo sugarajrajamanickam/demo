@@ -829,6 +829,37 @@ body,
 
 /* --- Bill / tax-invoice --- */
 
+.download-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.download-actions button {
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid var(--border, #d1d5db);
+  background: #fff;
+  color: var(--text, #111827);
+}
+
+.download-actions button.primary {
+  background: var(--primary, #2563eb);
+  color: #fff;
+  border-color: var(--primary, #2563eb);
+}
+
+.download-actions button.primary:hover:not(:disabled) {
+  background: var(--primary-hover, #1d4ed8);
+}
+
+.download-actions button:hover:not(:disabled) {
+  background: #f3f4f6;
+}
+
 .download-bill-row {
   margin-top: 1rem;
   display: flex;

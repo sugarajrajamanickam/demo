@@ -11,6 +11,7 @@ import {
 } from "./api";
 import CasingPricesCard from "./CasingPricesCard";
 import ReborePricesCard from "./ReborePricesCard";
+import QuotationValidityCard from "./QuotationValidityCard";
 import RatesTable from "./RatesTable";
 import {
   FULL_NAME_HTML_PATTERN,
@@ -522,6 +523,8 @@ export default function Admin({ onUnauthorized, currentUsername }: Props) {
       <CasingPricesCard onUnauthorized={onUnauthorized} />
 
       <ReborePricesCard onUnauthorized={onUnauthorized} />
+
+      <QuotationValidityCard onUnauthorized={onUnauthorized} />
     </div>
   );
 }
