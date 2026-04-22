@@ -95,6 +95,10 @@ class DashboardCustomerRow(BaseModel):
     bill_count: int
     payment_count: int
     status: PaymentStatus
+    # Latest activity — max of customer creation, any in-window bill date,
+    # any in-window payment date. ISO yyyy-mm-dd. Drives the "oldest first"
+    # sort and the "Last updated" column.
+    last_activity_at: str
     # Bills that match the search/date filters (used to drive the details panel).
     bills: List[DashboardBill]
 
@@ -102,6 +106,57 @@ class DashboardCustomerRow(BaseModel):
 class DashboardResponse(BaseModel):
     customers: List[DashboardCustomerRow]
     total_customers: int
+    # Overall roll-up across ALL filtered customers (not just the current page).
+    total_billed: float
+    total_paid: float
+    total_outstanding: float
+    limit: int
+    offset: int
+
+
+class StatementCustomer(BaseModel):
+    id: int
+    name: str
+    phone: str
+    address: Optional[str] = None
+    state: Optional[str] = None
+    gstin: Optional[str] = None
+
+
+class StatementBill(BaseModel):
+    id: int
+    invoice_number: str
+    invoice_date: str
+    job_type: str
+    depth: float
+    casing_7_pieces: int
+    casing_10_pieces: int
+    taxable_value: float
+    total_tax: float
+    non_taxable_total: float
+    grand_total: float
+    paid_total: float
+    outstanding: float
+
+
+class StatementPayment(BaseModel):
+    id: int
+    bill_id: int
+    invoice_number: str
+    amount: float
+    paid_at: str
+    mode: str
+    note: Optional[str] = None
+
+
+class StatementResponse(BaseModel):
+    customer: StatementCustomer
+    bills: List[StatementBill]
+    payments: List[StatementPayment]
+    total_billed: float
+    total_paid: float
+    outstanding: float
+    generated_at: str
 
 
 # ---------------------------------------------------------------------------
@@ -147,6 +202,8 @@ def list_dashboard_customers(
     bill_to: Optional[str] = None,
     payment_from: Optional[str] = None,
     payment_to: Optional[str] = None,
+    limit: int = Query(10, ge=1, le=100),
+    offset: int = Query(0, ge=0),
     _: User = Depends(get_current_user),
     session: Session = Depends(get_session),
 ) -> DashboardResponse:
@@ -184,7 +241,15 @@ def list_dashboard_customers(
         ).all()
         matched_customer_ids = set(by_customer) | set(by_invoice)
         if not matched_customer_ids:
-            return DashboardResponse(customers=[], total_customers=0)
+            return DashboardResponse(
+                customers=[],
+                total_customers=0,
+                total_billed=0.0,
+                total_paid=0.0,
+                total_outstanding=0.0,
+                limit=limit,
+                offset=offset,
+            )
 
     # Step 2: load all customers (optionally narrowed by search).
     cust_stmt = select(Customer)
@@ -193,7 +258,15 @@ def list_dashboard_customers(
     cust_stmt = cust_stmt.order_by(Customer.name.asc())  # type: ignore[attr-defined]
     customers = session.exec(cust_stmt).all()
     if not customers:
-        return DashboardResponse(customers=[], total_customers=0)
+        return DashboardResponse(
+            customers=[],
+            total_customers=0,
+            total_billed=0.0,
+            total_paid=0.0,
+            total_outstanding=0.0,
+            limit=limit,
+            offset=offset,
+        )
 
     customer_ids = [c.id for c in customers if c.id is not None]
 
@@ -216,6 +289,7 @@ def list_dashboard_customers(
 
     # Step 4: sum payments per bill within the payment-date range.
     paid_by_bill: dict[int, float] = {}
+    max_payment_date_by_bill: dict[int, str] = {}
     if bill_ids:
         pay_stmt = select(Payment.bill_id, func.coalesce(func.sum(Payment.amount), 0.0)).where(
             Payment.bill_id.in_(bill_ids)  # type: ignore[attr-defined]
@@ -240,6 +314,19 @@ def list_dashboard_customers(
         payment_count_by_bill: dict[int, int] = {
             bid: int(n or 0) for bid, n in session.exec(count_stmt).all()
         }
+
+        # Latest in-window payment date per bill (drives last_activity_at).
+        max_stmt = select(Payment.bill_id, func.max(Payment.paid_at)).where(
+            Payment.bill_id.in_(bill_ids)  # type: ignore[attr-defined]
+        )
+        if payment_from:
+            max_stmt = max_stmt.where(Payment.paid_at >= payment_from)
+        if payment_to:
+            max_stmt = max_stmt.where(Payment.paid_at <= payment_to)
+        max_stmt = max_stmt.group_by(Payment.bill_id)
+        for bid, max_paid_at in session.exec(max_stmt).all():
+            if max_paid_at:
+                max_payment_date_by_bill[bid] = str(max_paid_at)
     else:
         payment_count_by_bill = {}
 
@@ -252,6 +339,8 @@ def list_dashboard_customers(
         total_paid = 0.0
         payment_count = 0
         dash_bills: List[DashboardBill] = []
+        latest_bill_date: Optional[str] = None
+        latest_payment_date: Optional[str] = None
         for b in customer_bills:
             assert b.id is not None
             paid = paid_by_bill.get(b.id, 0.0)
@@ -259,6 +348,11 @@ def list_dashboard_customers(
             total_billed += b.grand_total
             total_paid += paid
             payment_count += payment_count_by_bill.get(b.id, 0)
+            if latest_bill_date is None or b.invoice_date > latest_bill_date:
+                latest_bill_date = b.invoice_date
+            max_pay = max_payment_date_by_bill.get(b.id)
+            if max_pay and (latest_payment_date is None or max_pay > latest_payment_date):
+                latest_payment_date = max_pay
             dash_bills.append(
                 DashboardBill(
                     id=b.id,
@@ -288,6 +382,14 @@ def list_dashboard_customers(
         if status_filter != "all" and row_status != status_filter:
             continue
 
+        # last_activity_at = latest of customer creation, in-window bill, in-window payment.
+        candidates = [c.created_at.date().isoformat()]
+        if latest_bill_date:
+            candidates.append(latest_bill_date)
+        if latest_payment_date:
+            candidates.append(latest_payment_date)
+        last_activity_at = max(candidates)
+
         rows.append(
             DashboardCustomerRow(
                 customer_id=c.id,
@@ -299,11 +401,30 @@ def list_dashboard_customers(
                 bill_count=len(customer_bills),
                 payment_count=payment_count,
                 status=row_status,
+                last_activity_at=last_activity_at,
                 bills=dash_bills,
             )
         )
 
-    return DashboardResponse(customers=rows, total_customers=len(rows))
+    # Sort oldest-first by last_activity_at; ties broken by name for stability.
+    rows.sort(key=lambda r: (r.last_activity_at, r.name.lower()))
+    total_customers = len(rows)
+    # Roll-ups across all filtered rows (not just the current page) so the
+    # dashboard summary bar stays accurate as the user pages through results.
+    overall_billed = round(sum(r.total_billed for r in rows), 2)
+    overall_paid = round(sum(r.total_paid for r in rows), 2)
+    overall_outstanding = round(sum(r.outstanding for r in rows), 2)
+    paginated = rows[offset : offset + limit]
+
+    return DashboardResponse(
+        customers=paginated,
+        total_customers=total_customers,
+        total_billed=overall_billed,
+        total_paid=overall_paid,
+        total_outstanding=overall_outstanding,
+        limit=limit,
+        offset=offset,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -661,4 +782,97 @@ def download_customer_statement(
             "Content-Disposition": f'attachment; filename="{filename}"',
             "X-Customer-Id": str(customer.id),
         },
+    )
+
+
+@router.get(
+    "/api/dashboard/customers/{customer_id}/statement",
+    response_model=StatementResponse,
+)
+def get_customer_statement_json(
+    customer_id: int,
+    bill_from: Optional[str] = None,
+    bill_to: Optional[str] = None,
+    payment_from: Optional[str] = None,
+    payment_to: Optional[str] = None,
+    _: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> StatementResponse:
+    """JSON version of the statement, rendered in the Dashboard modal."""
+    bill_from = _parse_date(bill_from, "bill_from")
+    bill_to = _parse_date(bill_to, "bill_to")
+    payment_from = _parse_date(payment_from, "payment_from")
+    payment_to = _parse_date(payment_to, "payment_to")
+
+    customer, rows = _load_statement(
+        session,
+        customer_id,
+        bill_from=bill_from,
+        bill_to=bill_to,
+        payment_from=payment_from,
+        payment_to=payment_to,
+    )
+
+    bills: List[StatementBill] = []
+    payments: List[StatementPayment] = []
+    total_billed = 0.0
+    total_paid = 0.0
+    for r in rows:
+        b = r.bill
+        assert b.id is not None
+        outstanding = round(b.grand_total - r.paid, 2)
+        total_billed += b.grand_total
+        total_paid += r.paid
+        bills.append(
+            StatementBill(
+                id=b.id,
+                invoice_number=b.invoice_number,
+                invoice_date=b.invoice_date,
+                job_type=b.job_type,
+                depth=b.depth,
+                casing_7_pieces=b.casing_7_pieces,
+                casing_10_pieces=b.casing_10_pieces,
+                taxable_value=round(b.taxable_value, 2),
+                total_tax=round(b.total_tax, 2),
+                non_taxable_total=round(b.non_taxable_total, 2),
+                grand_total=round(b.grand_total, 2),
+                paid_total=round(r.paid, 2),
+                outstanding=outstanding,
+            )
+        )
+        for p in r.payments:
+            assert p.id is not None
+            payments.append(
+                StatementPayment(
+                    id=p.id,
+                    bill_id=b.id,
+                    invoice_number=b.invoice_number,
+                    amount=p.amount,
+                    paid_at=p.paid_at,
+                    mode=str(p.mode.value if hasattr(p.mode, "value") else p.mode),
+                    note=p.note,
+                )
+            )
+
+    payments.sort(key=lambda p: (p.paid_at, p.id))
+    total_billed = round(total_billed, 2)
+    total_paid = round(total_paid, 2)
+    outstanding = round(total_billed - total_paid, 2)
+    assert customer.id is not None
+
+    return StatementResponse(
+        customer=StatementCustomer(
+            id=customer.id,
+            name=customer.name,
+            phone=customer.phone,
+            address=customer.address,
+            state=customer.state,
+            gstin=customer.gstin,
+        ),
+        bills=bills,
+        payments=payments,
+        total_billed=total_billed,
+        total_paid=total_paid,
+        outstanding=outstanding,
+        generated_at=datetime.now(timezone.utc).astimezone().strftime("%Y-%m-%d %H:%M"),
     )
