@@ -43,11 +43,19 @@ export default function CustomerCombobox({
   const [activeIdx, setActiveIdx] = useState<number>(0);
   const rootRef = useRef<HTMLDivElement | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  // Tracks when the selection was cleared by the user typing, so the
+  // sync-from-props effect doesn't overwrite the keystroke they just made.
+  const isTypingRef = useRef(false);
   const listboxId = useId();
 
   // Keep the input text in sync when the parent changes the selection from
-  // outside (e.g. resetting the form).
+  // outside (e.g. resetting the form). Skip when the clear originated from
+  // the user typing in the input.
   useEffect(() => {
+    if (isTypingRef.current) {
+      isTypingRef.current = false;
+      return;
+    }
     setQuery(selected ? fmtSelected(selected) : "");
   }, [selected]);
 
@@ -141,8 +149,12 @@ export default function CustomerCombobox({
             setQuery(e.target.value);
             setOpen(true);
             setActiveIdx(0);
-            // typing invalidates any existing selection
-            if (selected) onSelect(null);
+            // typing invalidates any existing selection. Mark the sync
+            // effect to skip once so the user's keystroke isn't erased.
+            if (selected) {
+              isTypingRef.current = true;
+              onSelect(null);
+            }
           }}
           onFocus={() => setOpen(true)}
           onKeyDown={handleKeyDown}
