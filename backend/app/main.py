@@ -23,6 +23,7 @@ from .auth import (
 from .db import get_session, init_db
 from .models import User
 from .billing import router as billing_router
+from .dashboard import router as dashboard_router
 from .password import router as password_router
 from .payments import router as payments_router
 from .quotation import router as quotation_router
@@ -54,6 +55,7 @@ app.add_middleware(
         "Content-Disposition",
         "X-Invoice-Number",
         "X-Quotation-Number",
+        "X-Customer-Id",
     ],
 )
 
@@ -111,6 +113,7 @@ app.include_router(rates_router)
 app.include_router(billing_router)
 app.include_router(payments_router)
 app.include_router(quotation_router)
+app.include_router(dashboard_router)
 
 
 # ---------------------------------------------------------------------------
