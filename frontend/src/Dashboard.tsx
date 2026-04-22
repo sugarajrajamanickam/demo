@@ -340,6 +340,9 @@ export default function Dashboard({ onUnauthorized }: Props) {
                   <th></th>
                   <th>Name</th>
                   <th>Phone</th>
+                  <th>Date of request</th>
+                  <th>Actual bore date</th>
+                  <th>Bore type</th>
                   <th>Last updated</th>
                   <th>Bills</th>
                   <th className="num">Billed</th>
@@ -377,6 +380,15 @@ export default function Dashboard({ onUnauthorized }: Props) {
                           </button>
                         </td>
                         <td>{row.phone}</td>
+                        <td data-testid={`date-of-request-${row.customer_id}`}>
+                          {row.date_of_request || "—"}
+                        </td>
+                        <td data-testid={`actual-date-of-bore-${row.customer_id}`}>
+                          {row.actual_date_of_bore || "—"}
+                        </td>
+                        <td data-testid={`bore-type-${row.customer_id}`}>
+                          {jobTypeLabel(row.bore_type)}
+                        </td>
                         <td data-testid={`last-updated-${row.customer_id}`}>
                           {row.last_activity_at}
                         </td>
@@ -404,7 +416,7 @@ export default function Dashboard({ onUnauthorized }: Props) {
                       {isOpen && (
                         <tr className="dashboard-detail-row">
                           <td></td>
-                          <td colSpan={9}>
+                          <td colSpan={12}>
                             {row.bills.length === 0 ? (
                               <div className="muted">No bills in the selected window.</div>
                             ) : (

@@ -192,6 +192,8 @@ export interface BillRequest {
   job_type: JobType;
   casing_7_pieces: number;
   casing_10_pieces: number;
+  /** Preferred linkage: the customer chosen on the Calculate page. */
+  customer_id?: number | null;
   customer_name: string;
   customer_phone: string;
   customer_address?: string | null;
@@ -320,6 +322,11 @@ export interface Customer {
   state: string | null;
   state_code: string | null;
   gstin: string | null;
+  /** ISO yyyy-mm-dd; always set for customers created after the feature ship. */
+  date_of_request: string;
+  /** ISO yyyy-mm-dd or empty string when the bore hasn't been performed yet. */
+  actual_date_of_bore: string;
+  bore_type: JobType;
   created_at: string;
 }
 
@@ -330,6 +337,10 @@ export interface CustomerCreate {
   state?: string | null;
   state_code?: string | null;
   gstin?: string | null;
+  /** Omit or leave empty to default to today on the server. */
+  date_of_request?: string | null;
+  actual_date_of_bore?: string | null;
+  bore_type: JobType;
 }
 
 export interface BillSummary {
@@ -382,6 +393,11 @@ export async function searchCustomers(q: string, limit = 20): Promise<Customer[]
   const res = await fetch(`/api/customers/search?${params.toString()}`, {
     headers: { ...authHeader() },
   });
+  return handle<Customer[]>(res);
+}
+
+export async function listCustomers(): Promise<Customer[]> {
+  const res = await fetch(`/api/customers`, { headers: { ...authHeader() } });
   return handle<Customer[]>(res);
 }
 
@@ -459,6 +475,11 @@ export interface DashboardCustomerRow {
   customer_id: number;
   name: string;
   phone: string;
+  /** ISO yyyy-mm-dd; empty for legacy rows that pre-date the feature. */
+  date_of_request: string;
+  /** ISO yyyy-mm-dd; empty when the bore hasn't been performed yet. */
+  actual_date_of_bore: string;
+  bore_type: string;
   total_billed: number;
   total_paid: number;
   outstanding: number;

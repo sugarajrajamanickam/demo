@@ -1,5 +1,6 @@
 import { FormEvent, useState } from "react";
 import {
+  Customer,
   JobType,
   QuotationPreview,
   QuotationRequest,
@@ -12,6 +13,7 @@ interface Props {
   jobType: JobType;
   casing7Pieces: number;
   casing10Pieces: number;
+  customer: Customer;
   onBack: () => void;
   onUnauthorized: () => void;
 }
@@ -56,11 +58,12 @@ export default function Quotation({
   jobType,
   casing7Pieces,
   casing10Pieces,
+  customer,
   onBack,
   onUnauthorized,
 }: Props) {
-  const [customerName, setCustomerName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
+  const [customerName, setCustomerName] = useState(customer.name);
+  const [customerPhone, setCustomerPhone] = useState(customer.phone);
 
   const [preview, setPreview] = useState<QuotationPreview | null>(null);
   const [error, setError] = useState<string | null>(null);

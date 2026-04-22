@@ -63,9 +63,49 @@ else:
 engine = create_engine(_DATABASE_URL, connect_args=_connect_args, **_engine_kwargs)
 
 
+def _sqlite_columns(session_engine, table: str) -> set[str]:
+    """Return column names for ``table`` on a SQLite engine (empty set if missing)."""
+    from sqlalchemy import text
+
+    with session_engine.connect() as conn:
+        rows = conn.execute(text(f"PRAGMA table_info('{table}')")).fetchall()
+    return {row[1] for row in rows}
+
+
+def _migrate_customers_new_fields() -> None:
+    """Add customer-request columns to an existing ``customers`` table.
+
+    SQLite-only; no-op for other backends (which would need Alembic).
+    Safe to call repeatedly — each ALTER is guarded by a column check.
+    Existing rows get their ``date_of_request`` backfilled from
+    ``created_at`` so they render sensibly in the Dashboard.
+    """
+    if not _DATABASE_URL.startswith("sqlite"):
+        return
+    from sqlalchemy import text
+
+    existing = _sqlite_columns(engine, "customers")
+    if not existing:  # table hasn't been created yet
+        return
+    with engine.begin() as conn:
+        if "date_of_request" not in existing:
+            conn.execute(text("ALTER TABLE customers ADD COLUMN date_of_request VARCHAR(10) NOT NULL DEFAULT ''"))
+            conn.execute(
+                text(
+                    "UPDATE customers SET date_of_request = substr(created_at, 1, 10) "
+                    "WHERE date_of_request = ''"
+                )
+            )
+        if "actual_date_of_bore" not in existing:
+            conn.execute(text("ALTER TABLE customers ADD COLUMN actual_date_of_bore VARCHAR(10) NOT NULL DEFAULT ''"))
+        if "bore_type" not in existing:
+            conn.execute(text("ALTER TABLE customers ADD COLUMN bore_type VARCHAR(16) NOT NULL DEFAULT 'new_bore'"))
+
+
 def init_db() -> None:
     """Create tables. Idempotent. Called on app startup."""
     SQLModel.metadata.create_all(engine)
+    _migrate_customers_new_fields()
 
 
 def get_session() -> Iterator[Session]:

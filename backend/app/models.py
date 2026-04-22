@@ -116,6 +116,11 @@ class Customer(SQLModel, table=True):
     Phone number is the unique natural key — used to look up customers
     from the Bill form and the Payments search page. Name/address/GSTIN
     are free-form metadata captured when the admin creates the record.
+
+    ``date_of_request`` captures when the customer first enquired, and
+    ``actual_date_of_bore`` records when the bore was (or will be)
+    performed. ``bore_type`` mirrors :class:`JobType` and pre-selects
+    the Calculate page job-type radio when the customer is picked.
     """
 
     __tablename__ = "customers"
@@ -127,6 +132,12 @@ class Customer(SQLModel, table=True):
     state: Optional[str] = Field(default=None, max_length=60)
     state_code: Optional[str] = Field(default=None, max_length=4)
     gstin: Optional[str] = Field(default=None, max_length=15)
+    # ISO yyyy-mm-dd. Required for new customers; existing rows are
+    # backfilled with the customer creation date during migration.
+    date_of_request: str = Field(default="", max_length=10)
+    # ISO yyyy-mm-dd; empty string means "not yet performed".
+    actual_date_of_bore: str = Field(default="", max_length=10)
+    bore_type: JobType = Field(default=JobType.NEW_BORE)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 

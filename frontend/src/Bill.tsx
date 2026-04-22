@@ -2,6 +2,7 @@ import { FormEvent, useState } from "react";
 import {
   BillPreview,
   BillRequest,
+  Customer,
   JobType,
   downloadBillPdf,
   previewBill,
@@ -12,6 +13,7 @@ interface Props {
   jobType: JobType;
   casing7Pieces: number;
   casing10Pieces: number;
+  customer: Customer;
   onBack: () => void;
   onUnauthorized: () => void;
 }
@@ -62,15 +64,16 @@ export default function Bill({
   jobType,
   casing7Pieces,
   casing10Pieces,
+  customer,
   onBack,
   onUnauthorized,
 }: Props) {
-  const [customerName, setCustomerName] = useState("");
-  const [customerPhone, setCustomerPhone] = useState("");
-  const [customerAddress, setCustomerAddress] = useState("");
-  const [customerState, setCustomerState] = useState("");
-  const [customerStateCode, setCustomerStateCode] = useState("");
-  const [customerGstin, setCustomerGstin] = useState("");
+  const [customerName, setCustomerName] = useState(customer.name);
+  const [customerPhone, setCustomerPhone] = useState(customer.phone);
+  const [customerAddress, setCustomerAddress] = useState(customer.address ?? "");
+  const [customerState, setCustomerState] = useState(customer.state ?? "");
+  const [customerStateCode, setCustomerStateCode] = useState(customer.state_code ?? "");
+  const [customerGstin, setCustomerGstin] = useState(customer.gstin ?? "");
 
   const [preview, setPreview] = useState<BillPreview | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -82,6 +85,7 @@ export default function Bill({
     job_type: jobType,
     casing_7_pieces: jobType === "new_bore" ? casing7Pieces : 0,
     casing_10_pieces: jobType === "new_bore" ? casing10Pieces : 0,
+    customer_id: customer.id,
     customer_name: customerName.trim(),
     customer_phone: customerPhone.trim(),
     customer_address: customerAddress.trim() || null,

@@ -89,6 +89,11 @@ class DashboardCustomerRow(BaseModel):
     customer_id: int
     name: str
     phone: str
+    # Customer-request metadata (surfaced as extra Dashboard columns so
+    # the manager can see enquiry / bore status alongside billing).
+    date_of_request: str
+    actual_date_of_bore: str
+    bore_type: str
     total_billed: float
     total_paid: float
     outstanding: float
@@ -395,6 +400,9 @@ def list_dashboard_customers(
                 customer_id=c.id,
                 name=c.name,
                 phone=c.phone,
+                date_of_request=c.date_of_request or "",
+                actual_date_of_bore=c.actual_date_of_bore or "",
+                bore_type=c.bore_type.value if hasattr(c.bore_type, "value") else str(c.bore_type),
                 total_billed=total_billed,
                 total_paid=total_paid,
                 outstanding=outstanding,
