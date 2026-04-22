@@ -1,4 +1,4 @@
-import { FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
 import {
   DashboardCustomerRow,
   DashboardFilters,
@@ -268,8 +268,8 @@ export default function Dashboard({ onUnauthorized }: Props) {
                 const isOpen = expanded.has(row.customer_id);
                 const badge = STATUS_BADGE[row.status];
                 return (
-                  <>
-                    <tr key={`row-${row.customer_id}`} data-testid={`dashboard-row-${row.customer_id}`}>
+                  <Fragment key={row.customer_id}>
+                    <tr data-testid={`dashboard-row-${row.customer_id}`}>
                       <td>
                         <button
                           type="button"
@@ -304,7 +304,7 @@ export default function Dashboard({ onUnauthorized }: Props) {
                       </td>
                     </tr>
                     {isOpen && (
-                      <tr key={`detail-${row.customer_id}`} className="dashboard-detail-row">
+                      <tr className="dashboard-detail-row">
                         <td></td>
                         <td colSpan={8}>
                           {row.bills.length === 0 ? (
@@ -340,7 +340,7 @@ export default function Dashboard({ onUnauthorized }: Props) {
                         </td>
                       </tr>
                     )}
-                  </>
+                  </Fragment>
                 );
               })}
             </tbody>
