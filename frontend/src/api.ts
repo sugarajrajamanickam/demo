@@ -472,6 +472,10 @@ export interface DashboardCustomerRow {
 export interface DashboardResponse {
   customers: DashboardCustomerRow[];
   total_customers: number;
+  // Overall roll-ups across ALL filtered customers (not just the current page).
+  total_billed: number;
+  total_paid: number;
+  total_outstanding: number;
   limit: number;
   offset: number;
 }

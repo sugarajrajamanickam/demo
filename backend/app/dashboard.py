@@ -106,6 +106,10 @@ class DashboardCustomerRow(BaseModel):
 class DashboardResponse(BaseModel):
     customers: List[DashboardCustomerRow]
     total_customers: int
+    # Overall roll-up across ALL filtered customers (not just the current page).
+    total_billed: float
+    total_paid: float
+    total_outstanding: float
     limit: int
     offset: int
 
@@ -238,7 +242,13 @@ def list_dashboard_customers(
         matched_customer_ids = set(by_customer) | set(by_invoice)
         if not matched_customer_ids:
             return DashboardResponse(
-                customers=[], total_customers=0, limit=limit, offset=offset,
+                customers=[],
+                total_customers=0,
+                total_billed=0.0,
+                total_paid=0.0,
+                total_outstanding=0.0,
+                limit=limit,
+                offset=offset,
             )
 
     # Step 2: load all customers (optionally narrowed by search).
@@ -249,7 +259,13 @@ def list_dashboard_customers(
     customers = session.exec(cust_stmt).all()
     if not customers:
         return DashboardResponse(
-            customers=[], total_customers=0, limit=limit, offset=offset,
+            customers=[],
+            total_customers=0,
+            total_billed=0.0,
+            total_paid=0.0,
+            total_outstanding=0.0,
+            limit=limit,
+            offset=offset,
         )
 
     customer_ids = [c.id for c in customers if c.id is not None]
@@ -393,11 +409,19 @@ def list_dashboard_customers(
     # Sort oldest-first by last_activity_at; ties broken by name for stability.
     rows.sort(key=lambda r: (r.last_activity_at, r.name.lower()))
     total_customers = len(rows)
+    # Roll-ups across all filtered rows (not just the current page) so the
+    # dashboard summary bar stays accurate as the user pages through results.
+    overall_billed = round(sum(r.total_billed for r in rows), 2)
+    overall_paid = round(sum(r.total_paid for r in rows), 2)
+    overall_outstanding = round(sum(r.outstanding for r in rows), 2)
     paginated = rows[offset : offset + limit]
 
     return DashboardResponse(
         customers=paginated,
         total_customers=total_customers,
+        total_billed=overall_billed,
+        total_paid=overall_paid,
+        total_outstanding=overall_outstanding,
         limit=limit,
         offset=offset,
     )

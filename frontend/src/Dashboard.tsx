@@ -1,4 +1,4 @@
-import { Fragment, FormEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { Fragment, FormEvent, useCallback, useEffect, useState } from "react";
 import {
   DashboardCustomerRow,
   DashboardFilters,
@@ -70,6 +70,7 @@ export default function Dashboard({ onUnauthorized }: Props) {
 
   const [rows, setRows] = useState<DashboardCustomerRow[]>([]);
   const [totalCustomers, setTotalCustomers] = useState(0);
+  const [overallTotals, setOverallTotals] = useState({ billed: 0, paid: 0, outstanding: 0 });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<number>>(new Set());
@@ -102,6 +103,11 @@ export default function Dashboard({ onUnauthorized }: Props) {
         if (!cancelled) {
           setRows(res.customers);
           setTotalCustomers(res.total_customers);
+          setOverallTotals({
+            billed: res.total_billed,
+            paid: res.total_paid,
+            outstanding: res.total_outstanding,
+          });
         }
       })
       .catch((err) => {
@@ -216,18 +222,6 @@ export default function Dashboard({ onUnauthorized }: Props) {
     }
   };
 
-  const totals = useMemo(() => {
-    let billed = 0;
-    let paid = 0;
-    let outstanding = 0;
-    for (const r of rows) {
-      billed += r.total_billed;
-      paid += r.total_paid;
-      outstanding += r.outstanding;
-    }
-    return { billed, paid, outstanding };
-  }, [rows]);
-
   const totalPages = Math.max(1, Math.ceil(totalCustomers / PAGE_SIZE));
   const firstIndex = totalCustomers === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
   const lastIndex = Math.min(totalCustomers, page * PAGE_SIZE);
@@ -327,9 +321,9 @@ export default function Dashboard({ onUnauthorized }: Props) {
         <span>
           <strong>{totalCustomers}</strong> customer{totalCustomers === 1 ? "" : "s"}
         </span>
-        <span>Billed: <strong>{fmtINR(totals.billed)}</strong></span>
-        <span>Paid: <strong>{fmtINR(totals.paid)}</strong></span>
-        <span>Outstanding: <strong>{fmtINR(totals.outstanding)}</strong></span>
+        <span>Billed: <strong>{fmtINR(overallTotals.billed)}</strong></span>
+        <span>Paid: <strong>{fmtINR(overallTotals.paid)}</strong></span>
+        <span>Outstanding: <strong>{fmtINR(overallTotals.outstanding)}</strong></span>
         <span className="muted">Sorted oldest activity first</span>
       </div>
 
