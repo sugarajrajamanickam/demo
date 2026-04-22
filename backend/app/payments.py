@@ -22,7 +22,7 @@ from sqlmodel import Session, select
 
 from .auth import get_current_user
 from .db import get_session
-from .models import Bill, Customer, Payment, PaymentMode, User
+from .models import Bill, Customer, JobType, Payment, PaymentMode, User
 
 router = APIRouter(tags=["payments"])
 
@@ -43,6 +43,12 @@ class CustomerCreate(BaseModel):
     state: Optional[str] = Field(default=None, max_length=60)
     state_code: Optional[str] = Field(default=None, max_length=4)
     gstin: Optional[str] = Field(default=None, max_length=15)
+    # ISO yyyy-mm-dd. Required for new customers; defaults to today if
+    # the client omits it so the field never lands empty.
+    date_of_request: Optional[str] = Field(default=None, max_length=10)
+    # ISO yyyy-mm-dd or empty — "not yet performed".
+    actual_date_of_bore: Optional[str] = Field(default=None, max_length=10)
+    bore_type: JobType = Field(default=JobType.NEW_BORE)
 
     @field_validator("name")
     @classmethod
@@ -72,6 +78,17 @@ class CustomerCreate(BaseModel):
             raise ValueError("GSTIN must be 15 alphanumeric characters")
         return v
 
+    @field_validator("date_of_request", "actual_date_of_bore")
+    @classmethod
+    def _validate_iso_date(cls, v: Optional[str]) -> Optional[str]:
+        if v is None or v == "":
+            return None
+        try:
+            date.fromisoformat(v)
+        except ValueError as err:
+            raise ValueError("Dates must be ISO yyyy-mm-dd") from err
+        return v
+
 
 class CustomerUpdate(CustomerCreate):
     pass
@@ -85,6 +102,9 @@ class CustomerOut(BaseModel):
     state: Optional[str]
     state_code: Optional[str]
     gstin: Optional[str]
+    date_of_request: str
+    actual_date_of_bore: str
+    bore_type: JobType
     created_at: datetime
 
 
@@ -161,6 +181,9 @@ def _customer_out(c: Customer) -> CustomerOut:
         state=c.state,
         state_code=c.state_code,
         gstin=c.gstin,
+        date_of_request=c.date_of_request or "",
+        actual_date_of_bore=c.actual_date_of_bore or "",
+        bore_type=c.bore_type,
         created_at=c.created_at,
     )
 
@@ -259,6 +282,19 @@ def search_customers(
     return [_customer_out(c) for c in session.exec(stmt).all()]
 
 
+@router.get("/api/customers", response_model=List[CustomerOut])
+def list_customers(
+    _: User = Depends(get_current_user),
+    session: Session = Depends(get_session),
+) -> List[CustomerOut]:
+    """List all customers ordered by most recent request first.
+
+    Powers the Customers management page (CRUD list view).
+    """
+    stmt = select(Customer).order_by(Customer.date_of_request.desc(), Customer.created_at.desc())  # type: ignore[attr-defined]
+    return [_customer_out(c) for c in session.exec(stmt).all()]
+
+
 @router.post(
     "/api/customers",
     response_model=CustomerOut,
@@ -284,6 +320,9 @@ def create_customer(
         state=payload.state,
         state_code=payload.state_code,
         gstin=payload.gstin,
+        date_of_request=payload.date_of_request or date.today().isoformat(),
+        actual_date_of_bore=payload.actual_date_of_bore or "",
+        bore_type=payload.bore_type,
     )
     session.add(customer)
     session.commit()
@@ -339,6 +378,9 @@ def update_customer(
     customer.state = payload.state
     customer.state_code = payload.state_code
     customer.gstin = payload.gstin
+    customer.date_of_request = payload.date_of_request or customer.date_of_request or date.today().isoformat()
+    customer.actual_date_of_bore = payload.actual_date_of_bore or ""
+    customer.bore_type = payload.bore_type
     session.add(customer)
     session.commit()
     session.refresh(customer)

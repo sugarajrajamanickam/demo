@@ -154,6 +154,11 @@ class BillRequest(BaseModel):
     job_type: JobType = Field(default=JobType.NEW_BORE)
     casing_7_pieces: int = Field(default=0, ge=0, le=10_000)
     casing_10_pieces: int = Field(default=0, ge=0, le=10_000)
+    # Preferred: the Calculate page now picks an existing customer and
+    # sends their ID. When present, it is the authoritative link used
+    # to persist the bill. The legacy ``customer_phone`` lookup remains
+    # as a fallback for older clients / existing bookmarks.
+    customer_id: int | None = Field(default=None, ge=1)
     customer_name: str = Field(..., min_length=1, max_length=120)
     customer_phone: str = Field(..., min_length=7, max_length=20)
     customer_address: str | None = Field(default=None, max_length=240)
@@ -885,17 +890,31 @@ def download_bill(
     customer, so we reject the download until one is created via the
     Payments page.
     """
-    customer = session.exec(
-        select(Customer).where(Customer.phone == payload.customer_phone)
-    ).first()
-    if customer is None:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=(
-                f"No customer found with phone {payload.customer_phone}. "
-                "Create the customer on the Payments page before issuing a bill."
-            ),
-        )
+    # Prefer the customer_id the Calculate page picked; fall back to
+    # phone-based lookup so older clients keep working.
+    customer: Customer | None = None
+    if payload.customer_id is not None:
+        customer = session.get(Customer, payload.customer_id)
+        if customer is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=(
+                    f"Customer id {payload.customer_id} not found. "
+                    "Select an existing customer on the Calculate page before issuing a bill."
+                ),
+            )
+    else:
+        customer = session.exec(
+            select(Customer).where(Customer.phone == payload.customer_phone)
+        ).first()
+        if customer is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=(
+                    f"No customer found with phone {payload.customer_phone}. "
+                    "Create the customer on the Customers page before issuing a bill."
+                ),
+            )
 
     preview = _build_preview_for_request(payload, session)
     pdf_bytes = render_invoice_pdf(preview)

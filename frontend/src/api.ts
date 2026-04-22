@@ -192,6 +192,8 @@ export interface BillRequest {
   job_type: JobType;
   casing_7_pieces: number;
   casing_10_pieces: number;
+  /** Preferred linkage: the customer chosen on the Calculate page. */
+  customer_id?: number | null;
   customer_name: string;
   customer_phone: string;
   customer_address?: string | null;
@@ -320,6 +322,11 @@ export interface Customer {
   state: string | null;
   state_code: string | null;
   gstin: string | null;
+  /** ISO yyyy-mm-dd; always set for customers created after the feature ship. */
+  date_of_request: string;
+  /** ISO yyyy-mm-dd or empty string when the bore hasn't been performed yet. */
+  actual_date_of_bore: string;
+  bore_type: JobType;
   created_at: string;
 }
 
@@ -330,6 +337,10 @@ export interface CustomerCreate {
   state?: string | null;
   state_code?: string | null;
   gstin?: string | null;
+  /** Omit or leave empty to default to today on the server. */
+  date_of_request?: string | null;
+  actual_date_of_bore?: string | null;
+  bore_type: JobType;
 }
 
 export interface BillSummary {
@@ -385,6 +396,11 @@ export async function searchCustomers(q: string, limit = 20): Promise<Customer[]
   return handle<Customer[]>(res);
 }
 
+export async function listCustomers(): Promise<Customer[]> {
+  const res = await fetch(`/api/customers`, { headers: { ...authHeader() } });
+  return handle<Customer[]>(res);
+}
+
 export async function createCustomer(payload: CustomerCreate): Promise<Customer> {
   const res = await fetch("/api/customers", {
     method: "POST",
@@ -437,6 +453,182 @@ export async function deletePayment(paymentId: number): Promise<void> {
     headers: { ...authHeader() },
   });
   await handle<void>(res);
+}
+
+// --- Dashboard --------------------------------------------------------------
+
+export type DashboardStatus = "all" | "paid" | "partial" | "unpaid";
+export type DashboardRowStatus = "paid" | "partial" | "unpaid" | "no_bills";
+
+export interface DashboardBill {
+  id: number;
+  invoice_number: string;
+  invoice_date: string;
+  job_type: string;
+  depth: number;
+  grand_total: number;
+  paid_total: number;
+  outstanding: number;
+}
+
+export interface DashboardCustomerRow {
+  customer_id: number;
+  name: string;
+  phone: string;
+  /** ISO yyyy-mm-dd; empty for legacy rows that pre-date the feature. */
+  date_of_request: string;
+  /** ISO yyyy-mm-dd; empty when the bore hasn't been performed yet. */
+  actual_date_of_bore: string;
+  bore_type: string;
+  total_billed: number;
+  total_paid: number;
+  outstanding: number;
+  bill_count: number;
+  payment_count: number;
+  status: DashboardRowStatus;
+  last_activity_at: string;
+  bills: DashboardBill[];
+}
+
+export interface DashboardResponse {
+  customers: DashboardCustomerRow[];
+  total_customers: number;
+  // Overall roll-ups across ALL filtered customers (not just the current page).
+  total_billed: number;
+  total_paid: number;
+  total_outstanding: number;
+  limit: number;
+  offset: number;
+}
+
+export interface DashboardFilters {
+  q?: string;
+  status?: DashboardStatus;
+  bill_from?: string;
+  bill_to?: string;
+  payment_from?: string;
+  payment_to?: string;
+  limit?: number;
+  offset?: number;
+}
+
+function buildDashboardQuery(filters: DashboardFilters): string {
+  const params = new URLSearchParams();
+  if (filters.q && filters.q.trim()) params.set("q", filters.q.trim());
+  if (filters.status && filters.status !== "all") params.set("status", filters.status);
+  if (filters.bill_from) params.set("bill_from", filters.bill_from);
+  if (filters.bill_to) params.set("bill_to", filters.bill_to);
+  if (filters.payment_from) params.set("payment_from", filters.payment_from);
+  if (filters.payment_to) params.set("payment_to", filters.payment_to);
+  if (filters.limit != null) params.set("limit", String(filters.limit));
+  if (filters.offset != null) params.set("offset", String(filters.offset));
+  return params.toString();
+}
+
+export interface StatementCustomer {
+  id: number;
+  name: string;
+  phone: string;
+  address?: string | null;
+  state?: string | null;
+  gstin?: string | null;
+}
+
+export interface StatementBill {
+  id: number;
+  invoice_number: string;
+  invoice_date: string;
+  job_type: string;
+  depth: number;
+  casing_7_pieces: number;
+  casing_10_pieces: number;
+  taxable_value: number;
+  total_tax: number;
+  non_taxable_total: number;
+  grand_total: number;
+  paid_total: number;
+  outstanding: number;
+}
+
+export interface StatementPayment {
+  id: number;
+  bill_id: number;
+  invoice_number: string;
+  amount: number;
+  paid_at: string;
+  mode: string;
+  note?: string | null;
+}
+
+export interface StatementResponse {
+  customer: StatementCustomer;
+  bills: StatementBill[];
+  payments: StatementPayment[];
+  total_billed: number;
+  total_paid: number;
+  outstanding: number;
+  generated_at: string;
+}
+
+export async function fetchCustomerStatementJson(
+  customerId: number,
+  filters: Omit<DashboardFilters, "q" | "status" | "limit" | "offset">,
+): Promise<StatementResponse> {
+  const query = buildDashboardQuery(filters);
+  const url = query
+    ? `/api/dashboard/customers/${customerId}/statement?${query}`
+    : `/api/dashboard/customers/${customerId}/statement`;
+  const res = await fetch(url, { headers: { ...authHeader() } });
+  return handle<StatementResponse>(res);
+}
+
+export async function fetchDashboardCustomers(
+  filters: DashboardFilters,
+): Promise<DashboardResponse> {
+  const query = buildDashboardQuery(filters);
+  const url = query
+    ? `/api/dashboard/customers?${query}`
+    : "/api/dashboard/customers";
+  const res = await fetch(url, { headers: { ...authHeader() } });
+  return handle<DashboardResponse>(res);
+}
+
+export async function downloadCustomerStatementPdf(
+  customerId: number,
+  filters: Omit<DashboardFilters, "q" | "status">,
+  fallbackName: string,
+): Promise<void> {
+  const query = buildDashboardQuery(filters);
+  const url = query
+    ? `/api/dashboard/customers/${customerId}/statement.pdf?${query}`
+    : `/api/dashboard/customers/${customerId}/statement.pdf`;
+  const res = await fetch(url, { headers: { ...authHeader() } });
+  if (res.status === 401) {
+    clearToken();
+    throw new Error("Session expired — please log in again");
+  }
+  if (!res.ok) {
+    let detail = `Download failed (${res.status})`;
+    try {
+      const body = await res.json();
+      if (body && typeof body.detail === "string") detail = body.detail;
+    } catch {
+      // ignore
+    }
+    throw new Error(detail);
+  }
+  const disposition = res.headers.get("Content-Disposition") || "";
+  const match = disposition.match(/filename="([^"]+)"/);
+  const filename = match ? match[1] : `statement-${fallbackName || "customer"}.pdf`;
+  const blob = await res.blob();
+  const objectUrl = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = objectUrl;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(objectUrl);
 }
 
 export interface QuotationRequest {

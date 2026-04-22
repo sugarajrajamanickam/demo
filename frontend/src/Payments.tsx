@@ -3,14 +3,12 @@ import {
   BillSummary,
   BillWithPayments,
   Customer,
-  CustomerCreate,
   CustomerWithBills,
   PAYMENT_MODES,
   PaymentCreate,
   PaymentMode,
   PaymentRecord,
   addPayment,
-  createCustomer,
   deletePayment,
   fetchBillWithPayments,
   fetchCustomer,
@@ -21,23 +19,13 @@ import { fmtINR } from "./format";
 
 interface Props {
   onUnauthorized: () => void;
+  onGoToCustomers: () => void;
 }
 
 type View =
   | { kind: "search" }
   | { kind: "customer"; customerId: number }
   | { kind: "bill"; customerId: number; billId: number };
-
-const PHONE_RE = /^\+?[0-9\- ]{7,20}$/;
-
-const emptyCustomerForm: CustomerCreate = {
-  name: "",
-  phone: "",
-  address: "",
-  state: "",
-  state_code: "",
-  gstin: "",
-};
 
 const emptyPaymentForm = (): PaymentCreate => ({
   amount: 0,
@@ -56,7 +44,7 @@ function jobTypeLabel(jt: string): string {
   return jt;
 }
 
-export default function Payments({ onUnauthorized }: Props) {
+export default function Payments({ onUnauthorized, onGoToCustomers }: Props) {
   const [view, setView] = useState<View>({ kind: "search" });
 
   const handleError = useCallback(
@@ -74,6 +62,7 @@ export default function Payments({ onUnauthorized }: Props) {
       {view.kind === "search" && (
         <SearchAndCreate
           onPick={(id) => setView({ kind: "customer", customerId: id })}
+          onGoToCustomers={onGoToCustomers}
           onError={handleError}
         />
       )}
@@ -106,9 +95,11 @@ export default function Payments({ onUnauthorized }: Props) {
 
 function SearchAndCreate({
   onPick,
+  onGoToCustomers,
   onError,
 }: {
   onPick: (id: number) => void;
+  onGoToCustomers: () => void;
   onError: (err: unknown) => string;
 }) {
   const [query, setQuery] = useState("");
@@ -116,7 +107,6 @@ function SearchAndCreate({
   const [results, setResults] = useState<Customer[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [showCreate, setShowCreate] = useState(false);
   const debounceRef = useRef<number | undefined>(undefined);
 
   useEffect(() => {
@@ -160,22 +150,17 @@ function SearchAndCreate({
         <button
           type="button"
           className="btn-primary"
-          onClick={() => setShowCreate((s) => !s)}
+          onClick={onGoToCustomers}
+          data-testid="payments-go-customers"
         >
-          {showCreate ? "Cancel" : "Create customer"}
+          Manage customers →
         </button>
       </div>
 
-      {showCreate && (
-        <CreateCustomerForm
-          onCreated={(c) => {
-            setShowCreate(false);
-            setQuery("");
-            onPick(c.id);
-          }}
-          onError={onError}
-        />
-      )}
+      <p className="muted small">
+        To record payments, the customer must exist. Add or edit customers on
+        the <button type="button" className="btn-link" onClick={onGoToCustomers}>Customers page</button>.
+      </p>
 
       {error && <div className="form-error" role="alert">{error}</div>}
       {loading && <div className="muted">Searching…</div>}
@@ -183,8 +168,8 @@ function SearchAndCreate({
       {!loading && results.length === 0 && (
         <div className="muted">
           {debouncedQ
-            ? "No customers match. Click Create customer to add one."
-            : "No customers yet. Click Create customer to add one."}
+            ? "No customers match. Add one on the Customers page."
+            : "No customers yet. Add one on the Customers page."}
         </div>
       )}
 
@@ -209,116 +194,6 @@ function SearchAndCreate({
         </ul>
       )}
     </div>
-  );
-}
-
-function CreateCustomerForm({
-  onCreated,
-  onError,
-}: {
-  onCreated: (c: Customer) => void;
-  onError: (err: unknown) => string;
-}) {
-  const [form, setForm] = useState<CustomerCreate>(emptyCustomerForm);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const handleSubmit = async (e: FormEvent) => {
-    e.preventDefault();
-    setError(null);
-    const name = form.name.trim();
-    const phone = form.phone.trim();
-    if (!name) return setError("Customer name is required");
-    if (!PHONE_RE.test(phone)) {
-      return setError(
-        "Phone must be 7–20 digits; optional leading + and spaces/dashes allowed",
-      );
-    }
-    setBusy(true);
-    try {
-      const created = await createCustomer({
-        name,
-        phone,
-        address: form.address?.trim() || null,
-        state: form.state?.trim() || null,
-        state_code: form.state_code?.trim() || null,
-        gstin: form.gstin?.trim() || null,
-      });
-      onCreated(created);
-    } catch (err) {
-      setError(onError(err));
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  return (
-    <form className="customer-create-form" onSubmit={handleSubmit}>
-      <h3>New customer</h3>
-      {error && <div className="form-error" role="alert">{error}</div>}
-      <label>
-        Name<span className="required-star">*</span>
-        <input
-          type="text"
-          required
-          value={form.name}
-          onChange={(e) => setForm({ ...form, name: e.target.value })}
-          maxLength={120}
-        />
-      </label>
-      <label>
-        Phone<span className="required-star">*</span>
-        <input
-          type="tel"
-          required
-          value={form.phone}
-          onChange={(e) => setForm({ ...form, phone: e.target.value })}
-          pattern="^\+?[0-9\- ]{7,20}$"
-          maxLength={20}
-        />
-      </label>
-      <label>
-        Address
-        <input
-          type="text"
-          value={form.address ?? ""}
-          onChange={(e) => setForm({ ...form, address: e.target.value })}
-          maxLength={240}
-        />
-      </label>
-      <div className="form-row">
-        <label>
-          State
-          <input
-            type="text"
-            value={form.state ?? ""}
-            onChange={(e) => setForm({ ...form, state: e.target.value })}
-            maxLength={60}
-          />
-        </label>
-        <label>
-          State code
-          <input
-            type="text"
-            value={form.state_code ?? ""}
-            onChange={(e) => setForm({ ...form, state_code: e.target.value })}
-            maxLength={4}
-          />
-        </label>
-      </div>
-      <label>
-        GSTIN
-        <input
-          type="text"
-          value={form.gstin ?? ""}
-          onChange={(e) => setForm({ ...form, gstin: e.target.value.toUpperCase() })}
-          maxLength={15}
-        />
-      </label>
-      <button type="submit" className="btn-primary" disabled={busy}>
-        {busy ? "Saving…" : "Create customer"}
-      </button>
-    </form>
   );
 }
 

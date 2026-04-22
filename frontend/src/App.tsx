@@ -3,11 +3,20 @@ import Login from "./Login";
 import Calculator from "./Calculator";
 import Admin from "./Admin";
 import Bill from "./Bill";
+import Customers from "./Customers";
+import Dashboard from "./Dashboard";
 import Payments from "./Payments";
 import Quotation from "./Quotation";
-import { JobType, Role, clearToken, fetchMe, getRole, getToken } from "./api";
+import { Customer, JobType, Role, clearToken, fetchMe, getRole, getToken } from "./api";
 
-type View = "calculate" | "admin" | "bill" | "payments" | "quotation";
+type View =
+  | "calculate"
+  | "admin"
+  | "bill"
+  | "payments"
+  | "quotation"
+  | "dashboard"
+  | "customers";
 
 interface Session {
   username: string;
@@ -19,6 +28,7 @@ interface BillContext {
   job_type: JobType;
   casing_7_pieces: number;
   casing_10_pieces: number;
+  customer: Customer;
 }
 
 export default function App() {
@@ -84,10 +94,24 @@ export default function App() {
               </button>
               <button
                 type="button"
+                className={`nav-btn ${view === "customers" ? "active" : ""}`}
+                onClick={() => setView("customers")}
+              >
+                Customers
+              </button>
+              <button
+                type="button"
                 className={`nav-btn ${view === "payments" ? "active" : ""}`}
                 onClick={() => setView("payments")}
               >
                 Payments
+              </button>
+              <button
+                type="button"
+                className={`nav-btn ${view === "dashboard" ? "active" : ""}`}
+                onClick={() => setView("dashboard")}
+              >
+                Dashboard
               </button>
               {isAdmin && (
                 <button
@@ -119,16 +143,18 @@ export default function App() {
         {token && view === "calculate" && (
           <Calculator
             onUnauthorized={handleLogout}
-            onDownloadBill={(depth, job_type, casing_7_pieces, casing_10_pieces) => {
-              setBillContext({ depth, job_type, casing_7_pieces, casing_10_pieces });
+            onGoToCustomers={() => setView("customers")}
+            onDownloadBill={(depth, job_type, casing_7_pieces, casing_10_pieces, customer) => {
+              setBillContext({ depth, job_type, casing_7_pieces, casing_10_pieces, customer });
               setView("bill");
             }}
-            onDownloadQuotation={(depth, job_type, casing_7_pieces, casing_10_pieces) => {
+            onDownloadQuotation={(depth, job_type, casing_7_pieces, casing_10_pieces, customer) => {
               setQuotationContext({
                 depth,
                 job_type,
                 casing_7_pieces,
                 casing_10_pieces,
+                customer,
               });
               setView("quotation");
             }}
@@ -137,8 +163,17 @@ export default function App() {
         {token && view === "admin" && isAdmin && (
           <Admin onUnauthorized={handleLogout} currentUsername={session?.username ?? ""} />
         )}
+        {token && view === "customers" && (
+          <Customers onUnauthorized={handleLogout} />
+        )}
         {token && view === "payments" && (
-          <Payments onUnauthorized={handleLogout} />
+          <Payments
+            onUnauthorized={handleLogout}
+            onGoToCustomers={() => setView("customers")}
+          />
+        )}
+        {token && view === "dashboard" && (
+          <Dashboard onUnauthorized={handleLogout} />
         )}
         {token && view === "bill" && billContext && (
           <Bill
@@ -146,6 +181,7 @@ export default function App() {
             jobType={billContext.job_type}
             casing7Pieces={billContext.casing_7_pieces}
             casing10Pieces={billContext.casing_10_pieces}
+            customer={billContext.customer}
             onBack={() => setView("calculate")}
             onUnauthorized={handleLogout}
           />
@@ -156,6 +192,7 @@ export default function App() {
             jobType={quotationContext.job_type}
             casing7Pieces={quotationContext.casing_7_pieces}
             casing10Pieces={quotationContext.casing_10_pieces}
+            customer={quotationContext.customer}
             onBack={() => setView("calculate")}
             onUnauthorized={handleLogout}
           />

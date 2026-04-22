@@ -1,27 +1,32 @@
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import {
   CasingPrices,
   CostBreakdown,
+  Customer,
   JobType,
   ReborePrice,
   calculateCost,
   fetchCasingPrices,
   fetchReborePrice,
+  listCustomers,
 } from "./api";
 
 interface Props {
   onUnauthorized: () => void;
+  onGoToCustomers: () => void;
   onDownloadBill: (
     depth: number,
     jobType: JobType,
     casing7Pieces: number,
     casing10Pieces: number,
+    customer: Customer,
   ) => void;
   onDownloadQuotation: (
     depth: number,
     jobType: JobType,
     casing7Pieces: number,
     casing10Pieces: number,
+    customer: Customer,
   ) => void;
 }
 
@@ -54,6 +59,7 @@ const fmtINR = (n: number): string => {
 
 export default function Calculator({
   onUnauthorized,
+  onGoToCustomers,
   onDownloadBill,
   onDownloadQuotation,
 }: Props) {
@@ -66,14 +72,18 @@ export default function Calculator({
   const [result, setResult] = useState<CostBreakdown | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [customers, setCustomers] = useState<Customer[]>([]);
+  const [customerId, setCustomerId] = useState<number | null>(null);
+  const [customerFilter, setCustomerFilter] = useState("");
 
   useEffect(() => {
     let cancelled = false;
-    Promise.all([fetchCasingPrices(), fetchReborePrice()])
-      .then(([p, r]) => {
+    Promise.all([fetchCasingPrices(), fetchReborePrice(), listCustomers()])
+      .then(([p, r, cs]) => {
         if (cancelled) return;
         setPrices(p);
         setRebore(r);
+        setCustomers(cs);
       })
       .catch((err) => {
         if (cancelled) return;
@@ -84,6 +94,26 @@ export default function Calculator({
       cancelled = true;
     };
   }, [onUnauthorized]);
+
+  const selectedCustomer = useMemo(
+    () => customers.find((c) => c.id === customerId) ?? null,
+    [customers, customerId],
+  );
+
+  const filteredCustomers = useMemo(() => {
+    const q = customerFilter.trim().toLowerCase();
+    if (!q) return customers;
+    return customers.filter(
+      (c) => c.name.toLowerCase().includes(q) || c.phone.toLowerCase().includes(q),
+    );
+  }, [customers, customerFilter]);
+
+  const handlePickCustomer = (c: Customer) => {
+    setCustomerId(c.id);
+    setJobType(c.bore_type);
+    setResult(null);
+    setError(null);
+  };
 
   const handleJobTypeChange = (next: JobType) => {
     setJobType(next);
@@ -126,6 +156,11 @@ export default function Calculator({
       c10 = parsed10;
     }
 
+    if (!selectedCustomer) {
+      setError("Select an existing customer before computing. Use the Customers page to add one.");
+      return;
+    }
+
     setBusy(true);
     try {
       const data = await calculateCost(depthNum, c7, c10, jobType);
@@ -145,6 +180,76 @@ export default function Calculator({
     <div className="calculator">
       <form className="card" onSubmit={handleSubmit}>
         <h2>Calculate</h2>
+        <fieldset className="customer-picker" data-testid="customer-picker">
+          <legend>
+            Customer<span className="required-star" aria-hidden="true">*</span>
+          </legend>
+          {customers.length === 0 ? (
+            <p className="muted small">
+              No customers yet.{" "}
+              <button
+                type="button"
+                className="btn-link"
+                onClick={onGoToCustomers}
+              >
+                Add one on the Customers page →
+              </button>
+            </p>
+          ) : (
+            <>
+              <input
+                type="search"
+                placeholder="Filter by name or phone…"
+                value={customerFilter}
+                onChange={(e) => setCustomerFilter(e.target.value)}
+                data-testid="customer-picker-search"
+              />
+              <select
+                value={customerId ?? ""}
+                onChange={(e) => {
+                  const id = e.target.value ? Number(e.target.value) : null;
+                  if (id === null) {
+                    setCustomerId(null);
+                    return;
+                  }
+                  const c = customers.find((x) => x.id === id);
+                  if (c) handlePickCustomer(c);
+                }}
+                size={Math.min(6, Math.max(3, filteredCustomers.length))}
+                data-testid="customer-picker-select"
+              >
+                {filteredCustomers.length === 0 && (
+                  <option disabled value="">
+                    No customers match
+                  </option>
+                )}
+                {filteredCustomers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} — {c.phone} (
+                    {c.bore_type === "re_bore" ? "Re-Bore" : "New Bore"})
+                  </option>
+                ))}
+              </select>
+              {selectedCustomer && (
+                <p className="muted small" data-testid="customer-picker-selected">
+                  Selected: <strong>{selectedCustomer.name}</strong> ·{" "}
+                  {selectedCustomer.phone} · requested{" "}
+                  {selectedCustomer.date_of_request || "—"}
+                </p>
+              )}
+              <p className="muted small">
+                Need a new customer?{" "}
+                <button
+                  type="button"
+                  className="btn-link"
+                  onClick={onGoToCustomers}
+                >
+                  Go to Customers →
+                </button>
+              </p>
+            </>
+          )}
+        </fieldset>
         <fieldset className="job-type-group">
           <legend>Job type</legend>
           <div className="job-type-options">
@@ -310,12 +415,15 @@ export default function Calculator({
                 <button
                   type="button"
                   className="primary"
+                  disabled={!selectedCustomer}
                   onClick={() =>
+                    selectedCustomer &&
                     onDownloadBill(
                       result.depth,
                       result.job_type,
                       result.casing_7_pieces,
                       result.casing_10_pieces,
+                      selectedCustomer,
                     )
                   }
                 >
@@ -323,12 +431,15 @@ export default function Calculator({
                 </button>
                 <button
                   type="button"
+                  disabled={!selectedCustomer}
                   onClick={() =>
+                    selectedCustomer &&
                     onDownloadQuotation(
                       result.depth,
                       result.job_type,
                       result.casing_7_pieces,
                       result.casing_10_pieces,
+                      selectedCustomer,
                     )
                   }
                 >
