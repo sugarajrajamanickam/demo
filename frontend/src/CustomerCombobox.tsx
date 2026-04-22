@@ -75,7 +75,9 @@ export default function CustomerCombobox({
   }, [customers, query, selected]);
 
   useEffect(() => {
-    if (activeIdx >= matches.length) setActiveIdx(Math.max(0, matches.length - 1));
+    if (activeIdx >= matches.length || activeIdx < 0) {
+      setActiveIdx(Math.max(0, matches.length - 1));
+    }
   }, [matches.length, activeIdx]);
 
   // Close on outside click.
@@ -109,7 +111,9 @@ export default function CustomerCombobox({
     if (e.key === "ArrowDown") {
       e.preventDefault();
       if (!open) setOpen(true);
-      setActiveIdx((i) => Math.min(matches.length - 1, i + 1));
+      setActiveIdx((i) =>
+        matches.length === 0 ? 0 : Math.min(matches.length - 1, i + 1),
+      );
     } else if (e.key === "ArrowUp") {
       e.preventDefault();
       if (!open) setOpen(true);
