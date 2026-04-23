@@ -1903,22 +1903,36 @@ body,
   .app-main {
     padding: 0.75rem;
     align-items: stretch;
-    /* .app-main is a flex container; min-width:0 lets its flex item (.card)
-       shrink below its min-content width so wide descendants (tables, inputs)
-       don't push the page past the viewport. */
+    /* .app-main is a flex container; min-width:0 lets its flex item (.card or
+       .xxx-page section) shrink below its min-content width so wide descendants
+       (tables, filter rows) don't push the page past the viewport. */
     min-width: 0;
+  }
+  /* Every top-level page container inside .app-main must be allowed to shrink
+     below its intrinsic content width. Wide tables are expected to scroll
+     inside their own .table-wrap / .dashboard-results wrapper, not expand the
+     section past the viewport. */
+  .app-main > .card,
+  .app-main > .customers-page,
+  .app-main > .dashboard-page,
+  .app-main > .payments-page,
+  .app-main > .admin,
+  .app-main > section,
+  .app-main > form {
+    min-width: 0;
+    max-width: 100%;
+    width: 100%;
   }
   .card {
     max-width: none;
     padding: 1rem;
-    /* Allow the card to shrink below its min-content width inside .app-main's
-       flex container, so wide tables inside .table-wrap can scroll inside the
-       wrap instead of expanding the card past the viewport. */
-    min-width: 0;
   }
   /* Flex children of .card (column flex) also need min-width:0 so their
      intrinsic content width (e.g. .cost-breakdown table) doesn't propagate up. */
   .card > *,
+  .customers-page > *,
+  .dashboard-page > *,
+  .payments-page > *,
   .cost-result,
   .table-wrap,
   .customer-picker,
@@ -1964,7 +1978,14 @@ body,
     gap: 0.5rem;
   }
   .dashboard-fieldset {
-    flex-wrap: wrap;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+  .dashboard-field,
+  .dashboard-field-search {
+    min-width: 0;
+    width: 100%;
   }
   .dashboard-field-date input {
     min-width: 0;
