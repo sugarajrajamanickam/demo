@@ -322,7 +322,7 @@ def create_customer(
         gstin=payload.gstin,
         date_of_request=payload.date_of_request or date.today().isoformat(),
         actual_date_of_bore=payload.actual_date_of_bore or "",
-        bore_type=payload.bore_type,
+        bore_type=payload.bore_type.value,
     )
     session.add(customer)
     session.commit()
@@ -380,7 +380,7 @@ def update_customer(
     customer.gstin = payload.gstin
     customer.date_of_request = payload.date_of_request or customer.date_of_request or date.today().isoformat()
     customer.actual_date_of_bore = payload.actual_date_of_bore or ""
-    customer.bore_type = payload.bore_type
+    customer.bore_type = payload.bore_type.value
     session.add(customer)
     session.commit()
     session.refresh(customer)

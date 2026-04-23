@@ -137,7 +137,11 @@ class Customer(SQLModel, table=True):
     date_of_request: str = Field(default="", max_length=10)
     # ISO yyyy-mm-dd; empty string means "not yet performed".
     actual_date_of_bore: str = Field(default="", max_length=10)
-    bore_type: JobType = Field(default=JobType.NEW_BORE)
+    # Stored as the JobType string value (e.g. "new_bore") rather than a
+    # SQLAlchemy Enum column, because SQLAlchemy defaults Enum persistence
+    # to enum *names* (NEW_BORE) which conflicts with the value-style
+    # storage the rest of the app uses (Bill.job_type is also a plain str).
+    bore_type: str = Field(default=JobType.NEW_BORE.value, max_length=16)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
