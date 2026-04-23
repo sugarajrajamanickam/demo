@@ -1903,10 +1903,27 @@ body,
   .app-main {
     padding: 0.75rem;
     align-items: stretch;
+    /* .app-main is a flex container; min-width:0 lets its flex item (.card)
+       shrink below its min-content width so wide descendants (tables, inputs)
+       don't push the page past the viewport. */
+    min-width: 0;
   }
   .card {
     max-width: none;
     padding: 1rem;
+    /* Allow the card to shrink below its min-content width inside .app-main's
+       flex container, so wide tables inside .table-wrap can scroll inside the
+       wrap instead of expanding the card past the viewport. */
+    min-width: 0;
+  }
+  /* Flex children of .card (column flex) also need min-width:0 so their
+     intrinsic content width (e.g. .cost-breakdown table) doesn't propagate up. */
+  .card > *,
+  .cost-result,
+  .table-wrap,
+  .customer-picker,
+  .customer-combobox {
+    min-width: 0;
   }
   .job-type-group .job-type-options {
     grid-template-columns: 1fr;
